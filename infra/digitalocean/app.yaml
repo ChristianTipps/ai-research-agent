@@ -19,6 +19,9 @@ services:
       - key: OPENAI_MODEL
         scope: RUN_TIME
         value: gpt-5.5
+      - key: ENABLE_OPENAI_WEB_SEARCH
+        scope: RUN_TIME
+        value: "true"
       - key: DATABASE_URL
         scope: RUN_TIME
         type: SECRET
