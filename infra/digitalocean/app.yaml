@@ -5,14 +5,14 @@ services:
   - name: worker-api
     source_dir: services/worker
     github:
-      repo: YOUR_GITHUB_OWNER/YOUR_REPOSITORY
+      repo: ChristianTipps/ai-research-agent
       branch: main
       deploy_on_push: true
     environment_slug: python
     instance_size_slug: basic-xxs
     instance_count: 1
     http_port: 8080
-    run_command: python -m ai_research_agent.main
+    run_command: PYTHONPATH=src python -m ai_research_agent.main
     envs:
       - key: OPENAI_API_KEY
         scope: RUN_TIME
