@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+
+node_modules
+.next
+apps/web/.next
+services/worker/.venv
+services/worker/data
+dist
+build
+coverage
+*.tsbuildinfo
