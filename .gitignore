@@ -12,3 +12,4 @@ services/worker/data/
 *.tsbuildinfo
 .pnpm-debug.log
 *.egg-info/
+.vercel
