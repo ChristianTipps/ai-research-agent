@@ -4,10 +4,9 @@ region: sfo3
 services:
   - name: worker-api
     source_dir: services/worker
-    github:
-      repo: ChristianTipps/ai-research-agent
+    git:
+      repo_clone_url: https://github.com/ChristianTipps/ai-research-agent.git
       branch: main
-      deploy_on_push: true
     environment_slug: python
     instance_size_slug: basic-xxs
     instance_count: 1
