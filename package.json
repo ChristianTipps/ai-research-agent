@@ -1,0 +1,17 @@
+{
+  "name": "ai-research-agent",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.24.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "pnpm --dir apps/web dev",
+    "build:web": "pnpm --dir apps/web build",
+    "typecheck:web": "pnpm --dir apps/web typecheck",
+    "dev:worker": "cd services/worker && python -m ai_research_agent.main",
+    "test:worker": "cd services/worker && python -m pytest"
+  }
+}

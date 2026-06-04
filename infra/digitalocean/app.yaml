@@ -1,0 +1,52 @@
+name: ai-research-agent
+region: sfo3
+
+services:
+  - name: worker-api
+    source_dir: services/worker
+    github:
+      repo: YOUR_GITHUB_OWNER/YOUR_REPOSITORY
+      branch: main
+      deploy_on_push: true
+    environment_slug: python
+    instance_size_slug: basic-xxs
+    instance_count: 1
+    http_port: 8080
+    run_command: python -m ai_research_agent.main
+    envs:
+      - key: OPENAI_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: OPENAI_MODEL
+        scope: RUN_TIME
+        value: gpt-5.5
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: DO_SPACES_BUCKET
+        scope: RUN_TIME
+        value: ai-research-agent-kb-a01bd200
+      - key: DO_SPACES_REGION
+        scope: RUN_TIME
+        value: sfo3
+      - key: DO_SPACES_ENDPOINT
+        scope: RUN_TIME
+        value: https://sfo3.digitaloceanspaces.com
+      - key: DO_SPACES_ACCESS_KEY_ID
+        scope: RUN_TIME
+        type: SECRET
+      - key: DO_SPACES_SECRET_ACCESS_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: NOTION_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: NOTION_PROMPTS_DATABASE_ID
+        scope: RUN_TIME
+        type: SECRET
+      - key: NOTION_RESPONSES_DATABASE_ID
+        scope: RUN_TIME
+        type: SECRET
+      - key: AGENT_BACKEND_TOKEN
+        scope: RUN_TIME
+        type: SECRET

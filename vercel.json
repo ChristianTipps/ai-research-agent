@@ -1,0 +1,5 @@
+{
+  "buildCommand": "pnpm --dir apps/web build",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "framework": "nextjs"
+}
