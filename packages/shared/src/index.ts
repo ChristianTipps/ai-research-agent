@@ -8,6 +8,16 @@ export const depthPresets = [
 
 export type DepthPreset = (typeof depthPresets)[number];
 
+export const skillLevels = [
+  "New to the topic",
+  "Working knowledge",
+  "Advanced builder",
+  "Expert",
+  "Mixed audience",
+] as const;
+
+export type SkillLevel = (typeof skillLevels)[number];
+
 export type RunStatus =
   | "queued"
   | "running"
@@ -33,13 +43,9 @@ export interface ResearchIntake {
   intendedUse: string;
   depth: DepthPreset;
   customDepth?: string;
-  currentSkillLevel?: string;
-  preferredFormat?: string;
-  trustedSources?: string;
-  excludedSources?: string;
+  currentSkillLevel?: SkillLevel | "";
   deadline?: string;
   outputType?: string;
-  rawPrompt?: string;
 }
 
 export interface WorkflowStep {
@@ -94,8 +100,8 @@ export const requiredFields: Array<{
   key: keyof Pick<ResearchIntake, "nicheResearchTopic" | "whyICare" | "intendedUse" | "depth">;
   label: string;
 }> = [
-  { key: "nicheResearchTopic", label: "Niche Research topic" },
-  { key: "whyICare", label: "Why I care" },
-  { key: "intendedUse", label: "I want to use this for" },
-  { key: "depth", label: "How deep/long should the research be" },
+  { key: "nicheResearchTopic", label: "Research topic" },
+  { key: "whyICare", label: "Why it matters" },
+  { key: "intendedUse", label: "Intended use" },
+  { key: "depth", label: "Research depth" },
 ];

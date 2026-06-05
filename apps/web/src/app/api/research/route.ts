@@ -8,13 +8,11 @@ const intakeSchema = z.object({
   intendedUse: z.string().min(1),
   depth: z.enum(["Quick scan", "Standard brief", "Deep research", "Technical deep dive", "Custom"]),
   customDepth: z.string().optional(),
-  currentSkillLevel: z.string().optional(),
-  preferredFormat: z.string().optional(),
-  trustedSources: z.string().optional(),
-  excludedSources: z.string().optional(),
+  currentSkillLevel: z
+    .enum(["New to the topic", "Working knowledge", "Advanced builder", "Expert", "Mixed audience", ""])
+    .optional(),
   deadline: z.string().optional(),
   outputType: z.string().optional(),
-  rawPrompt: z.string().optional(),
 });
 
 export async function POST(request: Request) {

@@ -3,22 +3,34 @@
 import {
   depthPresets,
   requiredFields,
+  skillLevels,
   type DepthPreset,
   type ResearchIntake,
   type RunRecord,
+  type SkillLevel,
 } from "@ai-research-agent/shared";
 import {
   Ban,
   CircleCheck,
   ClipboardList,
   ExternalLink,
+  Layers3,
   Play,
-  RefreshCw,
   RotateCcw,
   Send,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { StatusPill } from "./status-pill";
+
+const outputTypes = [
+  "report",
+  "decision memo",
+  "roadmap",
+  "checklist",
+  "code plan",
+  "tool comparison",
+  "notes",
+] as const;
 
 const emptyIntake: ResearchIntake = {
   nicheResearchTopic: "",
@@ -26,13 +38,9 @@ const emptyIntake: ResearchIntake = {
   intendedUse: "",
   depth: "Standard brief",
   customDepth: "",
-  currentSkillLevel: "",
-  preferredFormat: "",
-  trustedSources: "",
-  excludedSources: "",
+  currentSkillLevel: "Working knowledge",
   deadline: "",
   outputType: "report",
-  rawPrompt: "",
 };
 
 const terminalStatuses = new Set(["completed", "failed", "canceled"]);
@@ -81,24 +89,6 @@ export function ResearchWorkspace() {
 
   function updateField<K extends keyof ResearchIntake>(key: K, value: ResearchIntake[K]) {
     setIntake((current) => ({ ...current, [key]: value }));
-  }
-
-  function extractPromptFields() {
-    const raw = intake.rawPrompt ?? "";
-    const extract = (label: string) => {
-      const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const pattern = new RegExp(`${escaped}\\s*:\\s*(.+?)(?=\\n[A-Z][^\\n:]{2,80}:|$)`, "is");
-      return raw.match(pattern)?.[1]?.trim();
-    };
-
-    setIntake((current) => ({
-      ...current,
-      nicheResearchTopic: extract("Niche Research topic") ?? current.nicheResearchTopic,
-      whyICare: extract("Why I care") ?? current.whyICare,
-      intendedUse: extract("I want to use this for") ?? current.intendedUse,
-      customDepth: extract("How deep/long should the research be") ?? current.customDepth,
-      depth: extract("How deep/long should the research be") ? "Custom" : current.depth,
-    }));
   }
 
   async function submitRun() {
@@ -166,10 +156,17 @@ export function ResearchWorkspace() {
       <aside className="sidebar">
         <div className="app-bar">
           <div className="brand">
-            <span className="eyebrow">Vercel control surface</span>
+            <span className="eyebrow">Research console</span>
             <h1>AI Research Agent</h1>
           </div>
           <ClipboardList aria-hidden size={22} />
+        </div>
+
+        <div className="pattern-band" aria-hidden>
+          <span className="shape shape-square" />
+          <span className="shape shape-circle" />
+          <span className="shape shape-diamond" />
+          <span className="shape shape-line" />
         </div>
 
         <div className="panel">
@@ -178,39 +175,28 @@ export function ResearchWorkspace() {
           </div>
           <div className="panel-body">
             <div className="form">
-              <Field label="Chat-style prompt">
-                <textarea
-                  value={intake.rawPrompt}
-                  onChange={(event) => updateField("rawPrompt", event.target.value)}
-                />
-                <button className="button ghost" type="button" onClick={extractPromptFields}>
-                  <RefreshCw size={16} aria-hidden />
-                  Extract fields
-                </button>
-              </Field>
-
-              <Field label="Niche Research topic">
+              <Field label="Research topic">
                 <input
                   value={intake.nicheResearchTopic}
                   onChange={(event) => updateField("nicheResearchTopic", event.target.value)}
                 />
               </Field>
 
-              <Field label="Why I care">
+              <Field label="Why it matters">
                 <textarea
                   value={intake.whyICare}
                   onChange={(event) => updateField("whyICare", event.target.value)}
                 />
               </Field>
 
-              <Field label="I want to use this for">
+              <Field label="Intended use">
                 <textarea
                   value={intake.intendedUse}
                   onChange={(event) => updateField("intendedUse", event.target.value)}
                 />
               </Field>
 
-              <Field label="How deep/long should the research be">
+              <Field label="Research depth">
                 <select
                   value={intake.depth}
                   onChange={(event) => updateField("depth", event.target.value as DepthPreset)}
@@ -230,32 +216,15 @@ export function ResearchWorkspace() {
                 </Field>
               ) : null}
 
-              <Field label="My current skill level">
-                <input
+              <Field label="Skill level">
+                <select
                   value={intake.currentSkillLevel}
-                  onChange={(event) => updateField("currentSkillLevel", event.target.value)}
-                />
-              </Field>
-
-              <Field label="Preferred format">
-                <input
-                  value={intake.preferredFormat}
-                  onChange={(event) => updateField("preferredFormat", event.target.value)}
-                />
-              </Field>
-
-              <Field label="Sources I trust or want included">
-                <textarea
-                  value={intake.trustedSources}
-                  onChange={(event) => updateField("trustedSources", event.target.value)}
-                />
-              </Field>
-
-              <Field label="Sources I want excluded">
-                <textarea
-                  value={intake.excludedSources}
-                  onChange={(event) => updateField("excludedSources", event.target.value)}
-                />
+                  onChange={(event) => updateField("currentSkillLevel", event.target.value as SkillLevel)}
+                >
+                  {skillLevels.map((level) => (
+                    <option key={level}>{level}</option>
+                  ))}
+                </select>
               </Field>
 
               <Field label="Deadline or urgency">
@@ -266,15 +235,10 @@ export function ResearchWorkspace() {
               </Field>
 
               <Field label="Output type">
-                <select
-                  value={intake.outputType}
-                  onChange={(event) => updateField("outputType", event.target.value)}
-                >
-                  {["notes", "report", "roadmap", "checklist", "code plan", "video list", "tool comparison", "decision memo"].map(
-                    (type) => (
-                      <option key={type}>{type}</option>
-                    ),
-                  )}
+                <select value={intake.outputType} onChange={(event) => updateField("outputType", event.target.value)}>
+                  {outputTypes.map((type) => (
+                    <option key={type}>{type}</option>
+                  ))}
                 </select>
               </Field>
 
@@ -302,7 +266,7 @@ export function ResearchWorkspace() {
       <section className="workspace">
         <div className="app-bar">
           <div className="brand">
-            <span className="eyebrow">DigitalOcean worker status</span>
+            <span className="eyebrow">Worker status</span>
             <h1>Run Dashboard</h1>
           </div>
           {run ? <StatusPill status={run.status} /> : null}
@@ -381,7 +345,7 @@ export function ResearchWorkspace() {
               </div>
               <div className="panel-body">
                 {run.resultMarkdown ? (
-                  <div className="report">{run.resultMarkdown}</div>
+                  <MarkdownReport markdown={run.resultMarkdown} />
                 ) : (
                   <div className="empty">The worker has not delivered a final response yet.</div>
                 )}
@@ -416,7 +380,7 @@ export function ResearchWorkspace() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="field">
       <label>{label}</label>
@@ -471,6 +435,100 @@ function SavedLocation({ label, value }: { label: string; value?: string }) {
         <span className="muted">Not available yet</span>
       )}
     </div>
+  );
+}
+
+function MarkdownReport({ markdown }: { markdown: string }) {
+  const nodes: ReactNode[] = [];
+  let listItems: string[] = [];
+
+  function flushList() {
+    if (!listItems.length) return;
+    const key = `list-${nodes.length}`;
+    nodes.push(
+      <ul key={key}>
+        {listItems.map((item, index) => (
+          <li key={`${key}-${index}`}>
+            <InlineMarkdown text={item} />
+          </li>
+        ))}
+      </ul>,
+    );
+    listItems = [];
+  }
+
+  markdown.split("\n").forEach((line, index) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushList();
+      return;
+    }
+    const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      flushList();
+      const level = heading[1].length;
+      const content = <InlineMarkdown text={heading[2]} />;
+      if (level === 1) nodes.push(<h3 key={`h-${index}`}>{content}</h3>);
+      else if (level === 2) nodes.push(<h4 key={`h-${index}`}>{content}</h4>);
+      else nodes.push(<h5 key={`h-${index}`}>{content}</h5>);
+      return;
+    }
+    const bullet = trimmed.match(/^[-*]\s+(.+)$/);
+    if (bullet) {
+      listItems.push(bullet[1]);
+      return;
+    }
+    flushList();
+    nodes.push(
+      <p key={`p-${index}`}>
+        <InlineMarkdown text={trimmed} />
+      </p>,
+    );
+  });
+
+  flushList();
+  return (
+    <article className="report">
+      <Layers3 aria-hidden size={18} />
+      <div>{nodes}</div>
+    </article>
+  );
+}
+
+function InlineMarkdown({ text }: { text: string }) {
+  const pattern = /(\*\*([^*]+)\*\*)|(`([^`]+)`)|(\[([^\]]+)\]\((https?:\/\/[^)]+)\))/g;
+  const parts: ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(text))) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+    if (match[2]) {
+      parts.push(<strong key={`b-${match.index}`}>{match[2]}</strong>);
+    } else if (match[4]) {
+      parts.push(<code key={`c-${match.index}`}>{match[4]}</code>);
+    } else if (match[6] && match[7]) {
+      parts.push(
+        <a key={`a-${match.index}`} href={match[7]} target="_blank" rel="noreferrer">
+          {match[6]}
+        </a>,
+      );
+    }
+    lastIndex = pattern.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return (
+    <>
+      {parts.map((part, index) => (
+        <Fragment key={index}>{part}</Fragment>
+      ))}
+    </>
   );
 }
 

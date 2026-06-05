@@ -46,12 +46,8 @@ class ResearchIntake(BaseModel):
     depth: DepthPreset
     custom_depth: str | None = Field(default=None, alias="customDepth")
     current_skill_level: str | None = Field(default=None, alias="currentSkillLevel")
-    preferred_format: str | None = Field(default=None, alias="preferredFormat")
-    trusted_sources: str | None = Field(default=None, alias="trustedSources")
-    excluded_sources: str | None = Field(default=None, alias="excludedSources")
     deadline: str | None = None
     output_type: str | None = Field(default=None, alias="outputType")
-    raw_prompt: str | None = Field(default=None, alias="rawPrompt")
 
     @field_validator("*", mode="before")
     @classmethod
@@ -135,10 +131,10 @@ class ActionResponse(BaseModel):
 
 
 REQUIRED_FIELD_LABELS = {
-    "nicheResearchTopic": "Niche Research topic",
-    "whyICare": "Why I care",
-    "intendedUse": "I want to use this for",
-    "depth": "How deep/long should the research be",
+    "nicheResearchTopic": "Research topic",
+    "whyICare": "Why it matters",
+    "intendedUse": "Intended use",
+    "depth": "Research depth",
 }
 
 

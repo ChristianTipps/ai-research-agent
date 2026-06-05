@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import uuid
 
+from .formatting import strip_tracking_params
 from .schemas import SourceRecord
 
 
@@ -14,7 +15,7 @@ def extract_sources(markdown: str) -> list[SourceRecord]:
     seen: set[str] = set()
     for line in markdown.splitlines():
         for url in URL_RE.findall(line):
-            normalized = url.rstrip(".,")
+            normalized = strip_tracking_params(url)
             if normalized in seen:
                 continue
             seen.add(normalized)

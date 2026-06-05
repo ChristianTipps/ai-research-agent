@@ -5,6 +5,7 @@ from typing import Any
 
 from .agent import run_research_agent
 from .config import Settings
+from .formatting import prepare_final_report
 from .notion import NotionClient
 from .progress import complete_progress, mark_phase
 from .schemas import RunStatus, WorkflowPhase
@@ -112,13 +113,14 @@ async def process_research_run(run_id: str, repository: RunRepository, settings:
             progress=progress,
         )
 
-        agent_markdown = await run_research_agent(
+        raw_agent_markdown = await run_research_agent(
             run.intake,
             model=settings.openai_model,
             enable_web_search=settings.enable_openai_web_search,
         )
 
-        sources = extract_sources(agent_markdown)
+        sources = extract_sources(raw_agent_markdown)
+        agent_markdown = prepare_final_report(raw_agent_markdown, sources)
         if sources:
             repository.add_sources(run_id, sources)
             run = repository.get_run(run_id)
