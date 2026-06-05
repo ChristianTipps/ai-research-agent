@@ -8,29 +8,25 @@ import {
   type ResearchIntake,
   type RunRecord,
   type SkillLevel,
+  type SourceRecord,
 } from "@ai-research-agent/shared";
 import {
+  Activity,
   Ban,
   CircleCheck,
   ClipboardList,
+  Database,
   ExternalLink,
+  FileText,
   Layers3,
   Play,
   RotateCcw,
+  SearchCheck,
   Send,
+  ShieldCheck,
 } from "lucide-react";
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { StatusPill } from "./status-pill";
-
-const outputTypes = [
-  "report",
-  "decision memo",
-  "roadmap",
-  "checklist",
-  "code plan",
-  "tool comparison",
-  "notes",
-] as const;
 
 const emptyIntake: ResearchIntake = {
   nicheResearchTopic: "",
@@ -57,7 +53,15 @@ export function ResearchWorkspace() {
     return requiredFields.filter((field) => !String(intake[field.key] ?? "").trim());
   }, [intake]);
 
-  const isValid = missingFields.length === 0 && (intake.depth !== "Custom" || !!intake.customDepth?.trim());
+  const customDepthMissing = intake.depth === "Custom" && !intake.customDepth?.trim();
+  const missingLabels = [
+    ...missingFields.map((field) => field.label),
+    ...(customDepthMissing ? ["Custom depth"] : []),
+  ];
+  const isValid = missingLabels.length === 0;
+  const completionTotal = requiredFields.length + (intake.depth === "Custom" ? 1 : 0);
+  const completionDone = Math.max(0, completionTotal - missingLabels.length);
+  const completionPercent = `${Math.round((completionDone / completionTotal) * 100)}%`;
 
   useEffect(() => {
     if (!activeRunId) return;
@@ -153,228 +157,254 @@ export function ResearchWorkspace() {
 
   return (
     <main className="shell">
-      <aside className="sidebar">
-        <div className="app-bar">
+      <section className="workspace-frame">
+        <header className="topbar">
           <div className="brand">
-            <span className="eyebrow">Research console</span>
-            <h1>AI Research Agent</h1>
+            <span className="brand-mark">
+              <SearchCheck aria-hidden size={20} />
+            </span>
+            <div>
+              <span className="eyebrow">Research console</span>
+              <h1>AI Research Agent</h1>
+            </div>
           </div>
-          <ClipboardList aria-hidden size={22} />
-        </div>
-
-        <div className="pattern-band" aria-hidden>
-          <span className="shape shape-square" />
-          <span className="shape shape-circle" />
-          <span className="shape shape-diamond" />
-          <span className="shape shape-line" />
-        </div>
-
-        <div className="panel">
-          <div className="panel-header">
-            <h2>Research Intake</h2>
+          <div className="topbar-status">
+            <span className={`badge ${isValid ? "ready" : "idle"}`}>
+              {isValid ? "ready" : `${completionDone}/${completionTotal}`}
+            </span>
+            {run ? <StatusPill status={run.status} /> : <span className="badge idle">idle</span>}
           </div>
-          <div className="panel-body">
-            <div className="form">
-              <Field label="Research topic">
-                <input
-                  value={intake.nicheResearchTopic}
-                  onChange={(event) => updateField("nicheResearchTopic", event.target.value)}
-                />
-              </Field>
+        </header>
 
-              <Field label="Why it matters">
-                <textarea
-                  value={intake.whyICare}
-                  onChange={(event) => updateField("whyICare", event.target.value)}
-                />
-              </Field>
+        <div className="main-grid">
+          <aside className="sidebar">
+            <div className="signal-band" aria-hidden>
+              <span className="shape shape-square" />
+              <span className="shape shape-circle" />
+              <span className="shape shape-diamond" />
+              <span className="shape shape-line" />
+              <span className="shape shape-corner" />
+            </div>
 
-              <Field label="Intended use">
-                <textarea
-                  value={intake.intendedUse}
-                  onChange={(event) => updateField("intendedUse", event.target.value)}
-                />
-              </Field>
+            <div className="panel intake-panel">
+              <div className="panel-header split">
+                <div>
+                  <span className="eyebrow">Intake</span>
+                  <h2>Research Brief</h2>
+                </div>
+                <ClipboardList aria-hidden size={18} />
+              </div>
+              <div className="panel-body">
+                <div className="intake-meter" aria-hidden>
+                  <span style={{ width: completionPercent }} />
+                </div>
 
-              <Field label="Research depth">
-                <select
-                  value={intake.depth}
-                  onChange={(event) => updateField("depth", event.target.value as DepthPreset)}
-                >
-                  {depthPresets.map((depth) => (
-                    <option key={depth}>{depth}</option>
-                  ))}
-                </select>
-              </Field>
+                <div className="form">
+                  <Field label="Research topic">
+                    <input
+                      value={intake.nicheResearchTopic}
+                      onChange={(event) => updateField("nicheResearchTopic", event.target.value)}
+                      placeholder="AI agents for small-business operations"
+                    />
+                  </Field>
 
-              {intake.depth === "Custom" ? (
-                <Field label="Custom depth">
-                  <input
-                    value={intake.customDepth}
-                    onChange={(event) => updateField("customDepth", event.target.value)}
-                  />
-                </Field>
-              ) : null}
+                  <Field label="Why it matters">
+                    <textarea
+                      value={intake.whyICare}
+                      onChange={(event) => updateField("whyICare", event.target.value)}
+                      placeholder="What decision, project, or question this should support"
+                    />
+                  </Field>
 
-              <Field label="Skill level">
-                <select
-                  value={intake.currentSkillLevel}
-                  onChange={(event) => updateField("currentSkillLevel", event.target.value as SkillLevel)}
-                >
-                  {skillLevels.map((level) => (
-                    <option key={level}>{level}</option>
-                  ))}
-                </select>
-              </Field>
+                  <Field label="Intended use">
+                    <textarea
+                      value={intake.intendedUse}
+                      onChange={(event) => updateField("intendedUse", event.target.value)}
+                      placeholder="Briefing, build plan, comparison, learning path, or client notes"
+                    />
+                  </Field>
 
-              <Field label="Deadline or urgency">
-                <input
-                  value={intake.deadline}
-                  onChange={(event) => updateField("deadline", event.target.value)}
-                />
-              </Field>
+                  <div className="field-row">
+                    <Field label="Research depth">
+                      <select
+                        value={intake.depth}
+                        onChange={(event) => updateField("depth", event.target.value as DepthPreset)}
+                      >
+                        {depthPresets.map((depth) => (
+                          <option key={depth}>{depth}</option>
+                        ))}
+                      </select>
+                    </Field>
 
-              <Field label="Output type">
-                <select value={intake.outputType} onChange={(event) => updateField("outputType", event.target.value)}>
-                  {outputTypes.map((type) => (
-                    <option key={type}>{type}</option>
-                  ))}
-                </select>
-              </Field>
+                    <Field label="Skill level">
+                      <select
+                        value={intake.currentSkillLevel}
+                        onChange={(event) => updateField("currentSkillLevel", event.target.value as SkillLevel)}
+                      >
+                        {skillLevels.map((level) => (
+                          <option key={level}>{level}</option>
+                        ))}
+                      </select>
+                    </Field>
+                  </div>
 
-              {!isValid ? (
-                <div className="error">
-                  Missing info needed before I research:
-                  {missingFields.map((field) => (
-                    <div key={field.key}>- {field.label}: missing</div>
-                  ))}
-                  {intake.depth === "Custom" && !intake.customDepth?.trim() ? (
-                    <div>- Custom depth: missing</div>
+                  {intake.depth === "Custom" ? (
+                    <Field label="Custom depth">
+                      <input
+                        value={intake.customDepth}
+                        onChange={(event) => updateField("customDepth", event.target.value)}
+                        placeholder="Source count, rigor, sections, or constraints"
+                      />
+                    </Field>
                   ) : null}
+
+                  <Field label="Deadline or urgency">
+                    <input
+                      value={intake.deadline}
+                      onChange={(event) => updateField("deadline", event.target.value)}
+                      placeholder="Today, this week, no rush"
+                    />
+                  </Field>
+
+                  <div className={`form-note ${isValid ? "success" : ""}`}>
+                    {isValid ? "Ready to start" : `Needs ${missingLabels.join(", ")}`}
+                  </div>
+
+                  <button
+                    className="button primary full-width"
+                    type="button"
+                    onClick={submitRun}
+                    disabled={!isValid || busy}
+                  >
+                    <Play size={16} aria-hidden />
+                    Start research
+                  </button>
+                </div>
+              </div>
+            </div>
+          </aside>
+
+          <section className="workspace">
+            <div className="dashboard-heading">
+              <div>
+                <span className="eyebrow">Worker status</span>
+                <h2>{run?.intake.nicheResearchTopic || "Run Dashboard"}</h2>
+              </div>
+              {run ? (
+                <div className="button-row">
+                  <button className="button" type="button" onClick={() => sendAction("retry")} disabled={busy}>
+                    <RotateCcw size={16} aria-hidden />
+                    Retry
+                  </button>
+                  <button className="button" type="button" onClick={() => sendAction("resume")} disabled={busy}>
+                    <Send size={16} aria-hidden />
+                    Resume
+                  </button>
+                  <button className="button danger" type="button" onClick={() => sendAction("cancel")} disabled={busy}>
+                    <Ban size={16} aria-hidden />
+                    Cancel
+                  </button>
                 </div>
               ) : null}
-
-              <button className="button primary" type="button" onClick={submitRun} disabled={!isValid || busy}>
-                <Play size={16} aria-hidden />
-                Start research
-              </button>
-            </div>
-          </div>
-        </div>
-      </aside>
-
-      <section className="workspace">
-        <div className="app-bar">
-          <div className="brand">
-            <span className="eyebrow">Worker status</span>
-            <h1>Run Dashboard</h1>
-          </div>
-          {run ? <StatusPill status={run.status} /> : null}
-        </div>
-
-        {error ? <div className="error">{error}</div> : null}
-
-        {run ? (
-          <>
-            <div className="status-grid">
-              <Metric label="Run ID" value={run.id} />
-              <Metric label="Created" value={formatDate(run.createdAt)} />
-              <Metric label="Updated" value={formatDate(run.updatedAt)} />
-              <Metric label="Depth" value={run.requestedDepth} />
             </div>
 
-            <div className="button-row" style={{ marginTop: 14 }}>
-              <button className="button" type="button" onClick={() => sendAction("retry")} disabled={busy}>
-                <RotateCcw size={16} aria-hidden />
-                Retry
-              </button>
-              <button className="button" type="button" onClick={() => sendAction("resume")} disabled={busy}>
-                <Send size={16} aria-hidden />
-                Resume
-              </button>
-              <button className="button danger" type="button" onClick={() => sendAction("cancel")} disabled={busy}>
-                <Ban size={16} aria-hidden />
-                Cancel
-              </button>
-            </div>
+            {error ? <div className="error">{error}</div> : null}
 
-            <div className="content-grid">
-              <div className="panel">
-                <div className="panel-header">
-                  <h2>Progress Timeline</h2>
+            {run ? (
+              <>
+                <div className="status-grid">
+                  <Metric icon={<Activity size={16} aria-hidden />} label="Phase" value={formatLabel(run.phase)} />
+                  <Metric icon={<FileText size={16} aria-hidden />} label="Depth" value={run.requestedDepth} />
+                  <Metric icon={<Database size={16} aria-hidden />} label="Updated" value={formatDate(run.updatedAt)} />
+                  <Metric icon={<ShieldCheck size={16} aria-hidden />} label="Run ID" value={run.id} />
                 </div>
-                <div className="panel-body timeline">
-                  {run.progress.timeline.map((step) => (
-                    <div className="timeline-row" key={step.key}>
-                      <span className={`dot ${step.status}`} />
-                      <span>{step.label}</span>
-                      <span className="badge">{step.status}</span>
+
+                <div className="content-grid">
+                  <div className="panel">
+                    <div className="panel-header split">
+                      <h2>Progress Timeline</h2>
+                      <StatusPill status={run.status} />
                     </div>
-                  ))}
+                    <div className="panel-body timeline">
+                      {run.progress.timeline.map((step) => (
+                        <div className="timeline-row" key={step.key}>
+                          <span className={`dot ${step.status}`} />
+                          <span>{step.label}</span>
+                          <span className={`badge ${step.status}`}>{formatLabel(step.status)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="panel">
+                    <div className="panel-header split">
+                      <h2>Saved Locations</h2>
+                      <Database aria-hidden size={18} />
+                    </div>
+                    <div className="panel-body list">
+                      <SavedLocation label="Notion prompt" value={run.progress.savedLocations.notionPromptUrl} />
+                      <SavedLocation label="Notion response" value={run.progress.savedLocations.notionResponseUrl} />
+                      <SavedLocation label="Spaces summary" value={run.progress.savedLocations.spacesSummaryKey} />
+                    </div>
+                  </div>
                 </div>
-              </div>
 
-              <div className="panel">
-                <div className="panel-header">
-                  <h2>Saved Locations</h2>
+                <div className="content-grid">
+                  <SourcePanel sources={run.progress.sourceRecords} />
+                  <PanelList title="Tool Summaries" items={run.progress.toolSummaries} />
                 </div>
-                <div className="panel-body list">
-                  <SavedLocation label="Notion prompt" value={run.progress.savedLocations.notionPromptUrl} />
-                  <SavedLocation label="Notion response" value={run.progress.savedLocations.notionResponseUrl} />
-                  <SavedLocation label="Spaces summary" value={run.progress.savedLocations.spacesSummaryKey} />
-                </div>
-              </div>
-            </div>
 
-            <div className="content-grid">
-              <PanelList title="Sources" items={run.progress.sourceRecords.map((source) => source.title)} />
-              <PanelList title="Tool Summaries" items={run.progress.toolSummaries} />
-            </div>
-
-            <div className="content-grid">
-              <PanelList title="Decision Log" items={run.progress.decisionLog} />
-              <PanelList
-                title="Approval Requests"
-                items={run.progress.approvalRequests.map((request) => `${request.title}: ${request.status}`)}
-              />
-            </div>
-
-            <div className="panel" style={{ marginTop: 14 }}>
-              <div className="panel-header">
-                <h2>Final Research Response</h2>
-              </div>
-              <div className="panel-body">
-                {run.resultMarkdown ? (
-                  <MarkdownReport markdown={run.resultMarkdown} />
-                ) : (
-                  <div className="empty">The worker has not delivered a final response yet.</div>
-                )}
-              </div>
-            </div>
-
-            <div className="panel" style={{ marginTop: 14 }}>
-              <div className="panel-header">
-                <h2>Feedback</h2>
-              </div>
-              <div className="panel-body">
-                <div className="field">
-                  <label htmlFor="feedback">Was this too basic, too advanced, or about right?</label>
-                  <textarea
-                    id="feedback"
-                    value={feedback}
-                    onChange={(event) => setFeedback(event.target.value)}
+                <div className="content-grid">
+                  <PanelList title="Decision Log" items={run.progress.decisionLog} />
+                  <PanelList
+                    title="Approval Requests"
+                    items={run.progress.approvalRequests.map((request) => `${request.title}: ${request.status}`)}
                   />
                 </div>
-                <button className="button" type="button" onClick={submitFeedback} disabled={!feedback.trim() || busy}>
-                  <CircleCheck size={16} aria-hidden />
-                  Save feedback
-                </button>
+
+                <div className="panel section-gap">
+                  <div className="panel-header split">
+                    <h2>Final Research Response</h2>
+                    <Layers3 aria-hidden size={18} />
+                  </div>
+                  <div className="panel-body">
+                    {run.resultMarkdown ? (
+                      <MarkdownReport markdown={run.resultMarkdown} />
+                    ) : (
+                      <div className="empty">No final response yet.</div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="panel section-gap">
+                  <div className="panel-header">
+                    <h2>Feedback</h2>
+                  </div>
+                  <div className="panel-body feedback-grid">
+                    <div className="field">
+                      <label htmlFor="feedback">Was this too basic, too advanced, or about right?</label>
+                      <textarea
+                        id="feedback"
+                        value={feedback}
+                        onChange={(event) => setFeedback(event.target.value)}
+                      />
+                    </div>
+                    <button className="button" type="button" onClick={submitFeedback} disabled={!feedback.trim() || busy}>
+                      <CircleCheck size={16} aria-hidden />
+                      Save feedback
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="empty-state">
+                <ClipboardList aria-hidden size={26} />
+                <h2>No active run</h2>
+                <span className="muted">Intake required</span>
               </div>
-            </div>
-          </>
-        ) : (
-          <div className="empty">Submit the required intake fields to create a research run.</div>
-        )}
+            )}
+          </section>
+        </div>
       </section>
     </main>
   );
@@ -389,11 +419,45 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
     <div className="metric">
-      <span>{label}</span>
+      <span>
+        {icon}
+        {label}
+      </span>
       <strong>{value}</strong>
+    </div>
+  );
+}
+
+function SourcePanel({ sources }: { sources: SourceRecord[] }) {
+  return (
+    <div className="panel">
+      <div className="panel-header split">
+        <h2>Sources</h2>
+        <ShieldCheck aria-hidden size={18} />
+      </div>
+      <div className="panel-body list">
+        {sources.length ? (
+          sources.map((source) => (
+            <div className="list-item source-item" key={source.id}>
+              <div>
+                <strong>{source.title}</strong>
+                <span className={`badge confidence-${source.confidence}`}>{source.confidence} confidence</span>
+              </div>
+              {source.url ? (
+                <a href={source.url} target="_blank" rel="noreferrer">
+                  Open <ExternalLink size={13} aria-hidden />
+                </a>
+              ) : null}
+              {source.notes ? <p>{source.notes}</p> : null}
+            </div>
+          ))
+        ) : (
+          <div className="empty">No records yet.</div>
+        )}
+      </div>
     </div>
   );
 }
@@ -441,24 +505,49 @@ function SavedLocation({ label, value }: { label: string; value?: string }) {
 function MarkdownReport({ markdown }: { markdown: string }) {
   const nodes: ReactNode[] = [];
   let listItems: string[] = [];
+  let listType: "ul" | "ol" = "ul";
+  let codeLines: string[] = [];
+  let codeLang = "";
 
   function flushList() {
     if (!listItems.length) return;
     const key = `list-${nodes.length}`;
-    nodes.push(
-      <ul key={key}>
-        {listItems.map((item, index) => (
-          <li key={`${key}-${index}`}>
-            <InlineMarkdown text={item} />
-          </li>
-        ))}
-      </ul>,
-    );
+    const children = listItems.map((item, index) => (
+      <li key={`${key}-${index}`}>
+        <InlineMarkdown text={item} />
+      </li>
+    ));
+    nodes.push(listType === "ol" ? <ol key={key}>{children}</ol> : <ul key={key}>{children}</ul>);
     listItems = [];
+  }
+
+  function flushCode() {
+    if (!codeLang && !codeLines.length) return;
+    nodes.push(
+      <pre key={`code-${nodes.length}`}>
+        <code data-language={codeLang}>{codeLines.join("\n")}</code>
+      </pre>,
+    );
+    codeLines = [];
+    codeLang = "";
   }
 
   markdown.split("\n").forEach((line, index) => {
     const trimmed = line.trim();
+    const fence = trimmed.match(/^```(\w+)?/);
+    if (fence) {
+      if (codeLang) {
+        flushCode();
+      } else {
+        flushList();
+        codeLang = fence[1] ?? "text";
+      }
+      return;
+    }
+    if (codeLang) {
+      codeLines.push(line);
+      return;
+    }
     if (!trimmed) {
       flushList();
       return;
@@ -475,7 +564,16 @@ function MarkdownReport({ markdown }: { markdown: string }) {
     }
     const bullet = trimmed.match(/^[-*]\s+(.+)$/);
     if (bullet) {
+      if (listType !== "ul") flushList();
+      listType = "ul";
       listItems.push(bullet[1]);
+      return;
+    }
+    const numbered = trimmed.match(/^\d+\.\s+(.+)$/);
+    if (numbered) {
+      if (listType !== "ol") flushList();
+      listType = "ol";
+      listItems.push(numbered[1]);
       return;
     }
     flushList();
@@ -487,6 +585,7 @@ function MarkdownReport({ markdown }: { markdown: string }) {
   });
 
   flushList();
+  flushCode();
   return (
     <article className="report">
       <Layers3 aria-hidden size={18} />
@@ -539,4 +638,8 @@ function formatDate(value: string) {
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function formatLabel(value: string) {
+  return value.replaceAll("_", " ");
 }
