@@ -398,6 +398,11 @@ a {
   color: var(--success);
 }
 
+.form-note.compact {
+  font-size: 0.78rem;
+  padding: 7px 9px;
+}
+
 .button-row {
   display: flex;
   flex-wrap: wrap;
@@ -442,6 +447,16 @@ a {
 
 .button.full-width {
   width: 100%;
+}
+
+.spin {
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .theme-toggle {
@@ -857,6 +872,50 @@ a {
 .admin-controls {
   display: grid;
   gap: 12px;
+}
+
+.action-notice {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+}
+
+.action-notice.running {
+  border-color: rgba(183, 131, 24, 0.3);
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.action-notice.success {
+  border-color: rgba(47, 125, 79, 0.28);
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.action-notice.error {
+  border-color: rgba(184, 75, 64, 0.28);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.action-notice-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.action-notice-heading strong,
+.action-notice p {
+  margin: 0;
+}
+
+.action-notice p {
+  font-size: 0.86rem;
+  line-height: 1.45;
 }
 
 .memory-summary {

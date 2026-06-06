@@ -28,12 +28,20 @@ import {
 import { useEffect, useState } from "react";
 import { ThemeToggle } from "./theme-toggle";
 
+type AdminActivity = {
+  status: "running" | "success" | "error";
+  title: string;
+  detail: string;
+};
+
 export function UpdatesWorkspace() {
   const [overview, setOverview] = useState<UpdatesOverview | null>(null);
   const [memory, setMemory] = useState<MemoryOverview | null>(null);
   const [evals, setEvals] = useState<EvalsOverview | null>(null);
   const [passcode, setPasscode] = useState("");
   const [busy, setBusy] = useState(false);
+  const [activeAction, setActiveAction] = useState<string | null>(null);
+  const [activity, setActivity] = useState<AdminActivity | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function loadAll() {
@@ -51,17 +59,88 @@ export function UpdatesWorkspace() {
       setMemory((await memoryResponse.json()) as MemoryOverview);
       setEvals((await evalsResponse.json()) as EvalsOverview);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load evolution dashboard.");
+      const message = err instanceof Error ? err.message : "Could not load evolution dashboard.";
+      setError(message);
+      throw new Error(message);
     }
   }
 
   useEffect(() => {
-    loadAll();
+    loadAll().catch(() => undefined);
   }, []);
+
+  async function checkPasscode() {
+    setBusy(true);
+    setActiveAction("passcode");
+    setError(null);
+    setActivity({
+      status: "running",
+      title: "Checking admin passcode",
+      detail: "Verifying the passcode with the worker without changing memory, updates, or eval records.",
+    });
+    try {
+      const response = await fetch("/api/admin/check", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ passcode }),
+      });
+      if (!response.ok) throw new Error(await readErrorMessage(response));
+      const checkResponse = (await response.json()) as { message?: string };
+      setActivity({
+        status: "success",
+        title: "Admin passcode works",
+        detail: checkResponse.message ?? "The worker accepted this admin passcode.",
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not verify admin passcode.";
+      setError(message);
+      setActivity({
+        status: "error",
+        title: "Admin passcode check failed",
+        detail: message,
+      });
+    } finally {
+      setBusy(false);
+      setActiveAction(null);
+    }
+  }
+
+  async function refreshDashboard() {
+    setBusy(true);
+    setActiveAction("refresh");
+    setActivity({
+      status: "running",
+      title: "Refreshing dashboard",
+      detail: "Loading proposed updates, memory documents, workflow versions, and eval evidence.",
+    });
+    try {
+      await loadAll();
+      setActivity({
+        status: "success",
+        title: "Dashboard refreshed",
+        detail: "The latest memory, eval, and update records are now visible.",
+      });
+    } catch {
+      setActivity({
+        status: "error",
+        title: "Refresh failed",
+        detail: "The dashboard could not load the latest records.",
+      });
+    } finally {
+      setBusy(false);
+      setActiveAction(null);
+    }
+  }
 
   async function runAction(updateId: string, action: "approve" | "decline") {
     setBusy(true);
+    setActiveAction(`${action}:${updateId}`);
     setError(null);
+    setActivity({
+      status: "running",
+      title: action === "approve" ? "Approving update" : "Declining update",
+      detail: "Sending the admin action to the worker and waiting for the update record to refresh.",
+    });
     try {
       const response = await fetch(`/api/updates/${updateId}/action`, {
         method: "POST",
@@ -69,17 +148,36 @@ export function UpdatesWorkspace() {
         body: JSON.stringify({ action, passcode }),
       });
       if (!response.ok) throw new Error(await readErrorMessage(response));
+      const actionResponse = (await response.json()) as { message?: string };
       await loadAll();
+      setActivity({
+        status: "success",
+        title: action === "approve" ? "Approval completed" : "Decline completed",
+        detail: actionResponse.message ?? "The proposed update record has been refreshed.",
+      });
     } catch (err) {
+      const message = err instanceof Error ? err.message : `Could not ${action} update.`;
       setError(err instanceof Error ? err.message : `Could not ${action} update.`);
+      setActivity({
+        status: "error",
+        title: action === "approve" ? "Approval failed" : "Decline failed",
+        detail: message,
+      });
     } finally {
       setBusy(false);
+      setActiveAction(null);
     }
   }
 
   async function bootstrapOperatingMemory() {
     setBusy(true);
+    setActiveAction("bootstrap");
     setError(null);
+    setActivity({
+      status: "running",
+      title: "Bootstrapping memory",
+      detail: "Syncing required instruction files, tool configs, workflow records, and eval cases in Spaces.",
+    });
     try {
       const response = await fetch("/api/memory/bootstrap", {
         method: "POST",
@@ -87,17 +185,37 @@ export function UpdatesWorkspace() {
         body: JSON.stringify({ passcode }),
       });
       if (!response.ok) throw new Error(await readErrorMessage(response));
+      const nextMemory = (await response.json()) as MemoryOverview;
+      setMemory(nextMemory);
       await loadAll();
+      setActivity({
+        status: "success",
+        title: "Memory bootstrap completed",
+        detail: `${nextMemory.documents.length} document(s), ${nextMemory.toolConfigs.length} tool config(s), and ${nextMemory.updateApplications.length} update application record(s) are available.`,
+      });
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not bootstrap memory.";
       setError(err instanceof Error ? err.message : "Could not bootstrap memory.");
+      setActivity({
+        status: "error",
+        title: "Memory bootstrap failed",
+        detail: message,
+      });
     } finally {
       setBusy(false);
+      setActiveAction(null);
     }
   }
 
   async function runQualityEvals() {
     setBusy(true);
+    setActiveAction("evals");
     setError(null);
+    setActivity({
+      status: "running",
+      title: "Running evaluations",
+      detail: "Executing the active quality checks and saving the latest eval evidence.",
+    });
     try {
       const response = await fetch("/api/evals/run", {
         method: "POST",
@@ -105,12 +223,25 @@ export function UpdatesWorkspace() {
         body: JSON.stringify({ passcode }),
       });
       if (!response.ok) throw new Error(await readErrorMessage(response));
-      setEvals((await response.json()) as EvalsOverview);
+      const nextEvals = (await response.json()) as EvalsOverview;
+      setEvals(nextEvals);
       await loadAll();
+      setActivity({
+        status: "success",
+        title: "Evaluations completed",
+        detail: `${nextEvals.results.length} eval result(s) are now available across ${nextEvals.cases.length} active case(s).`,
+      });
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not run evaluations.";
       setError(err instanceof Error ? err.message : "Could not run evaluations.");
+      setActivity({
+        status: "error",
+        title: "Evaluations failed",
+        detail: message,
+      });
     } finally {
       setBusy(false);
+      setActiveAction(null);
     }
   }
 
@@ -142,22 +273,23 @@ export function UpdatesWorkspace() {
               <SearchCheck size={16} aria-hidden />
               Research
             </a>
-            <button className="button" type="button" onClick={loadAll} disabled={busy}>
-              <RefreshCw size={16} aria-hidden />
-              Refresh
+            <button className="button" type="button" onClick={refreshDashboard} disabled={busy}>
+              <RefreshCw className={activeAction === "refresh" ? "spin" : undefined} size={16} aria-hidden />
+              {activeAction === "refresh" ? "Refreshing" : "Refresh"}
             </button>
             <button className="button" type="button" onClick={bootstrapOperatingMemory} disabled={busy}>
-              <ServerCog size={16} aria-hidden />
-              Bootstrap memory
+              <ServerCog className={activeAction === "bootstrap" ? "spin" : undefined} size={16} aria-hidden />
+              {activeAction === "bootstrap" ? "Bootstrapping" : "Bootstrap memory"}
             </button>
             <button className="button" type="button" onClick={runQualityEvals} disabled={busy}>
-              <FlaskConical size={16} aria-hidden />
-              Run evals
+              <FlaskConical className={activeAction === "evals" ? "spin" : undefined} size={16} aria-hidden />
+              {activeAction === "evals" ? "Running evals" : "Run evals"}
             </button>
           </div>
         </header>
 
         {error ? <div className="error">{error}</div> : null}
+        {activity ? <AdminActivityNotice activity={activity} /> : null}
 
         <section className="panel">
           <div className="panel-header split">
@@ -176,6 +308,12 @@ export function UpdatesWorkspace() {
                 onChange={(event) => setPasscode(event.target.value)}
                 placeholder="Required for approve, decline, bootstrap, and eval runs"
               />
+              <div className="button-row">
+                <button className="button" type="button" onClick={checkPasscode} disabled={busy || !passcode.trim()}>
+                  <ShieldCheck className={activeAction === "passcode" ? "spin" : undefined} size={16} aria-hidden />
+                  {activeAction === "passcode" ? "Checking" : "Check passcode"}
+                </button>
+              </div>
             </div>
             <div className="memory-summary">
               <MetricTile label="Documents" value={String(documents.length)} />
@@ -203,6 +341,7 @@ export function UpdatesWorkspace() {
                     update={update}
                     evidence={evidenceByUpdateId.get(update.id)}
                     busy={busy}
+                    activeAction={activeAction}
                     onApprove={() => runAction(update.id, "approve")}
                     onDecline={() => runAction(update.id, "decline")}
                   />
@@ -297,15 +436,21 @@ function UpdateCard({
   update,
   evidence,
   busy,
+  activeAction,
   onApprove,
   onDecline,
 }: {
   update: ProposedUpdate;
   evidence?: UpdateEvidenceSummary;
   busy: boolean;
+  activeAction: string | null;
   onApprove: () => void;
   onDecline: () => void;
 }) {
+  const isPending = update.status === "pending";
+  const approving = activeAction === `approve:${update.id}`;
+  const declining = activeAction === `decline:${update.id}`;
+
   return (
     <article className="list-item update-card">
       <div className="update-card-heading">
@@ -318,17 +463,36 @@ function UpdateCard({
       </div>
       <p>{update.body}</p>
       {evidence ? <UpdateEvidence evidence={evidence} /> : null}
+      {!isPending ? (
+        <div className="form-note compact">
+          This update is already {update.status}. Approve and decline actions are only available for pending updates.
+        </div>
+      ) : null}
       <div className="button-row">
-        <button className="button" type="button" onClick={onApprove} disabled={busy || update.status !== "pending"}>
-          <CircleCheck size={16} aria-hidden />
-          Approve
+        <button className="button" type="button" onClick={onApprove} disabled={busy || !isPending}>
+          <CircleCheck className={approving ? "spin" : undefined} size={16} aria-hidden />
+          {approving ? "Approving" : "Approve"}
         </button>
-        <button className="button danger" type="button" onClick={onDecline} disabled={busy || update.status !== "pending"}>
-          <XCircle size={16} aria-hidden />
-          Decline
+        <button className="button danger" type="button" onClick={onDecline} disabled={busy || !isPending}>
+          <XCircle className={declining ? "spin" : undefined} size={16} aria-hidden />
+          {declining ? "Declining" : "Decline"}
         </button>
       </div>
     </article>
+  );
+}
+
+function AdminActivityNotice({ activity }: { activity: AdminActivity }) {
+  return (
+    <div className={`action-notice ${activity.status}`} role={activity.status === "error" ? "alert" : "status"}>
+      <div className="action-notice-heading">
+        {activity.status === "running" ? <RefreshCw className="spin" size={16} aria-hidden /> : null}
+        {activity.status === "success" ? <CircleCheck size={16} aria-hidden /> : null}
+        {activity.status === "error" ? <XCircle size={16} aria-hidden /> : null}
+        <strong>{activity.title}</strong>
+      </div>
+      <p>{activity.detail}</p>
+    </div>
   );
 }
 

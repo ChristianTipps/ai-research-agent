@@ -204,6 +204,15 @@ async def list_updates(_: None = Depends(authorize)) -> UpdatesOverview:
     )
 
 
+@app.post("/updates/admin-check", response_model=ActionResponse, response_model_by_alias=True)
+async def check_admin_update_passcode(
+    payload: UpdateActionCreate,
+    _: None = Depends(authorize),
+) -> ActionResponse:
+    authorize_update(payload.passcode)
+    return ActionResponse(status="valid", message="Admin passcode verified.")
+
+
 @app.post("/updates/{update_id}/approve", response_model=ActionResponse, response_model_by_alias=True)
 async def approve_update(
     update_id: str,

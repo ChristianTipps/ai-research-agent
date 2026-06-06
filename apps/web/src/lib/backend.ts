@@ -155,3 +155,13 @@ export async function runUpdateAction(updateId: string, action: "approve" | "dec
   });
   return parseResponse<{ status: string; message: string }>(response);
 }
+
+export async function checkAdminPasscode(passcode?: string) {
+  const response = await fetch(`${backendUrl}/updates/admin-check`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ passcode }),
+    cache: "no-store",
+  });
+  return parseResponse<{ status: string; message: string }>(response);
+}
