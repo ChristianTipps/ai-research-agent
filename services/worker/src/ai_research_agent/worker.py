@@ -9,7 +9,7 @@ from .config import Settings
 from .formatting import prepare_final_report
 from .notion import NotionClient
 from .progress import complete_progress, mark_phase
-from .schemas import ArtifactRecord, RunStatus, SourceRecord, TrustReport, WorkflowPhase
+from .schemas import ArtifactRecord, ResearchIntake, RunStatus, SourceRecord, TrustReport, WorkflowPhase
 from .source_strategy import (
     build_source_strategy,
     build_trust_report,
@@ -19,7 +19,7 @@ from .source_strategy import (
 from .sources import extract_sources
 from .spaces import SpacesClient, dated_artifact_key
 from .storage import RunRepository
-from .youtube import collect_youtube_artifact
+from .youtube import YouTubeArtifact, collect_youtube_artifact, extract_video_id
 
 
 def append_saved_records_section(
@@ -143,12 +143,26 @@ async def process_research_run(run_id: str, repository: RunRepository, settings:
         )
         if run is None:
             return
+        seeded_youtube_sources = _user_youtube_source_records(run.intake)
+        seeded_youtube_artifacts = await _collect_youtube_sources(seeded_youtube_sources)
+        seed_source_context = _youtube_seed_context(seeded_youtube_sources, seeded_youtube_artifacts)
+        if seeded_youtube_sources:
+            available_count = sum(1 for artifact in seeded_youtube_artifacts if artifact.transcript)
+            run.progress.tool_summaries.append(
+                f"Prepared {len(seeded_youtube_sources)} user-provided YouTube source(s); "
+                f"{available_count} public transcript(s) available."
+            )
+            run.progress.decision_log.append(
+                "User-provided YouTube URLs were treated as creator perspective sources and transcript lookup was best-effort."
+            )
+            repository.update_run(run_id, progress=run.progress)
         raw_agent_markdown = await run_research_agent(
             run.intake,
             model=settings.openai_model,
             enable_web_search=settings.enable_openai_web_search,
             source_strategy=strategy,
             approved_update_context=approved_context,
+            seed_source_context=seed_source_context,
         )
 
         run = await _phase(
@@ -159,8 +173,13 @@ async def process_research_run(run_id: str, repository: RunRepository, settings:
         )
         if run is None:
             return
-        sources = [review_source_record(source) for source in extract_sources(raw_agent_markdown)]
-        youtube_artifacts = await _collect_youtube_sources(sources)
+        extracted_sources = [review_source_record(source) for source in extract_sources(raw_agent_markdown)]
+        sources = _merge_source_records(seeded_youtube_sources, extracted_sources)
+        seeded_ids = {source.id for source in seeded_youtube_sources}
+        discovered_youtube_artifacts = await _collect_youtube_sources(
+            [source for source in sources if source.id not in seeded_ids]
+        )
+        youtube_artifacts = [*seeded_youtube_artifacts, *discovered_youtube_artifacts]
         artifacts: list[ArtifactRecord] = []
         for source in sources:
             artifact = _source_artifact_record(source, run_id)
@@ -314,8 +333,8 @@ async def _phase(
     return updated
 
 
-async def _collect_youtube_sources(sources: list[SourceRecord]) -> list[Any]:
-    artifacts = []
+async def _collect_youtube_sources(sources: list[SourceRecord]) -> list[YouTubeArtifact]:
+    artifacts: list[YouTubeArtifact] = []
     for source in sources:
         if source.source_type != "youtube":
             continue
@@ -347,7 +366,7 @@ def _save_spaces_artifacts(
     final_markdown: str,
     sources: list[SourceRecord],
     source_artifacts: list[ArtifactRecord],
-    youtube_artifacts: list[Any],
+    youtube_artifacts: list[YouTubeArtifact],
     trust_report: TrustReport,
     run_summary: dict[str, Any],
 ) -> dict[str, Any]:
@@ -463,7 +482,7 @@ def _source_artifact_record(source: SourceRecord, run_id: str) -> ArtifactRecord
 
 
 def _youtube_artifact_records(
-    youtube_artifacts: list[Any],
+    youtube_artifacts: list[YouTubeArtifact],
     run_id: str,
     sources: list[SourceRecord],
 ) -> list[ArtifactRecord]:
@@ -482,6 +501,101 @@ def _youtube_artifact_records(
             )
         )
     return records
+
+
+def _user_youtube_source_records(intake: ResearchIntake) -> list[SourceRecord]:
+    records: list[SourceRecord] = []
+    for index, url in enumerate(intake.youtube_urls, start=1):
+        video_id = extract_video_id(url) or uuid.uuid4().hex[:8]
+        records.append(
+            review_source_record(
+                SourceRecord(
+                    id=f"src_user_youtube_{index}_{video_id[:12]}",
+                    title=f"User-provided YouTube video {index}",
+                    url=url,
+                    sourceType="youtube",
+                    confidence="medium",
+                    confidenceReason="Creator perspective supplied by the user; factual claims should be corroborated.",
+                    relevance="User-submitted video URL for this research run.",
+                    transcriptStatus="not_attempted",
+                    notes="Seed source from the intake form.",
+                )
+            )
+        )
+    return records
+
+
+def _youtube_seed_context(
+    sources: list[SourceRecord],
+    artifacts: list[YouTubeArtifact],
+) -> str:
+    if not sources:
+        return ""
+
+    artifacts_by_source_id = {artifact.source_id: artifact for artifact in artifacts}
+    blocks = [
+        "Use these exact user-provided YouTube URLs as optional creator perspective sources. "
+        "Only rely on transcript text when shown here."
+    ]
+    remaining_transcript_chars = 9000
+    for source in sources:
+        artifact = artifacts_by_source_id.get(source.id)
+        metadata = artifact.metadata if artifact else {}
+        title = metadata.get("title") or source.title
+        channel = metadata.get("author_name") or source.channel_name or "Unknown channel"
+        transcript_status = artifact.transcript_status if artifact else source.transcript_status
+        block = [
+            f"- Title: {title}",
+            f"  URL: {source.url}",
+            f"  Channel: {channel}",
+            f"  Transcript status: {transcript_status}",
+        ]
+        transcript = artifact.transcript if artifact else None
+        if transcript and remaining_transcript_chars > 0:
+            excerpt = transcript[: min(2000, remaining_transcript_chars)]
+            remaining_transcript_chars -= len(excerpt)
+            block.append(f"  Public transcript excerpt: {excerpt}")
+        else:
+            block.append("  Public transcript excerpt: unavailable; do not infer video claims from the title alone.")
+        blocks.append("\n".join(block))
+    return "\n".join(blocks)
+
+
+def _merge_source_records(
+    seeded_sources: list[SourceRecord],
+    extracted_sources: list[SourceRecord],
+) -> list[SourceRecord]:
+    merged: list[SourceRecord] = []
+    by_key: dict[str, SourceRecord] = {}
+    for source in [*seeded_sources, *extracted_sources]:
+        key = _source_merge_key(source)
+        if key in by_key:
+            _fill_missing_source_fields(by_key[key], source)
+            continue
+        by_key[key] = source
+        merged.append(source)
+    return merged
+
+
+def _source_merge_key(source: SourceRecord) -> str:
+    if source.source_type == "youtube":
+        video_id = extract_video_id(source.url)
+        if video_id:
+            return f"youtube:{video_id}"
+    if source.url:
+        return source.url.lower().rstrip("/")
+    return source.title.lower()
+
+
+def _fill_missing_source_fields(target: SourceRecord, incoming: SourceRecord) -> None:
+    if target.title.startswith("User-provided YouTube video") and incoming.title:
+        target.title = incoming.title
+    target.author = target.author or incoming.author
+    target.channel_name = target.channel_name or incoming.channel_name
+    target.published_date = target.published_date or incoming.published_date
+    target.confidence_reason = target.confidence_reason or incoming.confidence_reason
+    target.relevance = target.relevance or incoming.relevance
+    target.notes = _append_note(target.notes, incoming.notes) if incoming.notes else target.notes
 
 
 def _approved_update_context(repository: RunRepository) -> str:

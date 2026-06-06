@@ -34,6 +34,9 @@ Behavior:
 - Use YouTube or creator sources when the user asks for them or when creator
   practice/opinion materially improves the research. Clearly label those as
   creator/community perspective unless corroborated by primary sources.
+- When the user supplies YouTube URLs, use those exact videos as optional creator
+  perspective sources. Use transcript text only when the backend provides it;
+  otherwise label transcript access as unavailable instead of guessing video content.
 - Compare sources and separate confirmed facts from reasonable guesses.
 - Track dates carefully when recency affects relevance.
 - Avoid hype and unsupported certainty.
@@ -72,6 +75,7 @@ def build_research_prompt(
     intake: ResearchIntake,
     source_strategy: SourceStrategy | None = None,
     approved_update_context: str = "",
+    seed_source_context: str = "",
 ) -> str:
     strategy = source_strategy.model_dump(by_alias=True) if source_strategy else {}
     budget = resolve_research_budget_minutes(intake)
@@ -93,12 +97,16 @@ def build_research_prompt(
         Approved runtime updates:
         {approved_update_context or "- No approved update notes yet."}
 
+        User-provided YouTube source context:
+        {seed_source_context or "- No YouTube URLs were provided by the user."}
+
         Source strategy:
         - Use this source strategy object as the plan: {strategy}
         - Search broadly enough for the requested depth, budget, and topic volatility.
         - Check source credibility yourself instead of relying on user-provided source lists.
         - Prefer primary and authoritative sources, then corroborate with credible secondary sources.
-        - Include creator/YouTube sources when the strategy requests them.
+        - Include creator/YouTube sources when the strategy requests them or when user-provided YouTube URLs are listed above.
+        - Treat user-provided YouTube links as perspective sources unless primary sources corroborate their claims.
         - Reject weak, stale, promotional, or unsupported sources unless you are explicitly comparing them.
         - Keep all source URLs in the final "Sources and confidence" section only.
 
@@ -140,6 +148,7 @@ async def run_research_agent(
     enable_web_search: bool,
     source_strategy: SourceStrategy | None = None,
     approved_update_context: str = "",
+    seed_source_context: str = "",
 ) -> str:
     if Runner is None:
         raise RuntimeError("openai-agents is not installed")
@@ -153,6 +162,7 @@ async def run_research_agent(
             intake,
             source_strategy=source_strategy,
             approved_update_context=approved_update_context,
+            seed_source_context=seed_source_context,
         ),
     )
     return str(result.final_output)

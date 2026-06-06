@@ -41,6 +41,7 @@ const emptyIntake: ResearchIntake = {
   deadline: "",
   researchBudgetMinutes: researchBudgetDefaults["Standard brief"],
   outputType: "report",
+  youtubeUrls: [],
 };
 
 const terminalStatuses = new Set(["completed", "failed", "canceled"]);
@@ -53,6 +54,7 @@ export function ResearchWorkspace() {
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [reportExpanded, setReportExpanded] = useState(false);
+  const [youtubeUrlText, setYoutubeUrlText] = useState("");
 
   const missingFields = useMemo(() => {
     return requiredFields.filter((field) => !String(intake[field.key] ?? "").trim());
@@ -119,6 +121,7 @@ export function ResearchWorkspace() {
         body: JSON.stringify({
           ...intake,
           researchBudgetMinutes: intake.researchBudgetMinutes ?? researchBudgetDefaults[intake.depth],
+          youtubeUrls: parseYoutubeUrls(youtubeUrlText),
         }),
       });
       if (!response.ok) throw new Error(await response.text());
@@ -240,6 +243,14 @@ export function ResearchWorkspace() {
                       value={intake.intendedUse}
                       onChange={(event) => updateField("intendedUse", event.target.value)}
                       placeholder="Briefing, build plan, comparison, learning path, or client notes"
+                    />
+                  </Field>
+
+                  <Field label="YouTube URLs (optional)">
+                    <textarea
+                      value={youtubeUrlText}
+                      onChange={(event) => setYoutubeUrlText(event.target.value)}
+                      placeholder="Paste one video URL per line"
                     />
                   </Field>
 
@@ -592,6 +603,37 @@ function previewMarkdown(markdown: string) {
   const preview = markdown.slice(0, 2600);
   const lastBreak = preview.lastIndexOf("\n\n");
   return `${preview.slice(0, lastBreak > 1200 ? lastBreak : preview.length)}\n\n_View full report to continue._`;
+}
+
+function parseYoutubeUrls(value: string) {
+  const matches =
+    value.match(/https?:\/\/[^\s,]+|www\.youtube\.com\/[^\s,]+|youtube\.com\/[^\s,]+|youtu\.be\/[^\s,]+/gi) ??
+    value.split(/[\s,]+/);
+  const urls = matches
+    .map((item) => cleanYoutubeUrl(item))
+    .filter((item): item is string => Boolean(item));
+  return Array.from(new Set(urls.map((url) => url.toLowerCase())))
+    .map((lowercaseUrl) => urls.find((url) => url.toLowerCase() === lowercaseUrl) ?? lowercaseUrl)
+    .slice(0, 12);
+}
+
+function cleanYoutubeUrl(value: string) {
+  let candidate = value.trim().replace(/^[()[\]{}<>.,;"']+|[()[\]{}<>.,;"']+$/g, "");
+  if (!candidate) return null;
+  if (candidate.startsWith("www.")) {
+    candidate = `https://${candidate}`;
+  } else if (candidate.startsWith("youtube.com/") || candidate.startsWith("youtu.be/")) {
+    candidate = `https://${candidate}`;
+  }
+  try {
+    const url = new URL(candidate);
+    if (!["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"].includes(url.hostname.toLowerCase())) {
+      return null;
+    }
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
 
 function MarkdownReport({ markdown }: { markdown: string }) {

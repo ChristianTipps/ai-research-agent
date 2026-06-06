@@ -52,7 +52,8 @@ def build_source_strategy(intake: ResearchIntake) -> SourceStrategy:
     if any(term in text for term in ["news", "latest", "today", "current", "recent", "2026"]):
         source_types.append("news")
         targets.append("date-stamped current sources")
-    include_youtube = any(
+    has_user_youtube_urls = bool(intake.youtube_urls)
+    include_youtube = has_user_youtube_urls or any(
         term in text
         for term in [
             "youtube",
@@ -67,6 +68,8 @@ def build_source_strategy(intake: ResearchIntake) -> SourceStrategy:
     )
     if include_youtube:
         source_types.append("youtube")
+        if has_user_youtube_urls:
+            targets.append("user-submitted YouTube videos with metadata and best-effort public transcripts")
         targets.append("YouTube creator videos with metadata and best-effort public transcripts")
     if any(term in text for term in ["reddit", "community", "forum", "hacker news", "hn"]):
         source_types.append("community")

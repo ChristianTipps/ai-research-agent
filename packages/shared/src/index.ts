@@ -89,6 +89,7 @@ export interface ResearchIntake {
   deadline?: string;
   researchBudgetMinutes?: number;
   outputType?: string;
+  youtubeUrls?: string[];
 }
 
 export interface WorkflowStep {

@@ -1,6 +1,7 @@
 import json
 
 from ai_research_agent.schemas import ArtifactRecord, FeedbackCreate, ResearchIntake, initial_progress
+from ai_research_agent.agent import build_research_prompt
 from ai_research_agent.source_strategy import build_source_strategy, resolve_research_budget_minutes
 from ai_research_agent.storage import LocalSQLiteRunRepository
 from ai_research_agent.updates import proposed_update_from_feedback
@@ -38,6 +39,66 @@ def test_source_strategy_includes_youtube_when_requested() -> None:
     assert strategy.include_youtube is True
     assert "youtube" in strategy.required_source_types
     assert strategy.min_sources >= 5
+
+
+def test_user_supplied_youtube_urls_trigger_youtube_strategy() -> None:
+    intake = ResearchIntake(
+        nicheResearchTopic="Codex agent setup",
+        whyICare="I want practical setup advice",
+        intendedUse="Learning roadmap",
+        depth="Standard brief",
+        youtubeUrls=[
+            "https://youtu.be/abc123XYZ",
+            "https://www.youtube.com/watch?v=def456XYZ",
+        ],
+    )
+    strategy = build_source_strategy(intake)
+
+    assert intake.youtube_urls == [
+        "https://youtu.be/abc123XYZ",
+        "https://www.youtube.com/watch?v=def456XYZ",
+    ]
+    assert strategy.include_youtube is True
+    assert "youtube" in strategy.required_source_types
+    assert any("user-submitted YouTube" in target for target in strategy.source_targets)
+
+
+def test_youtube_url_text_is_normalized_and_deduped() -> None:
+    intake = ResearchIntake(
+        nicheResearchTopic="Codex agent setup",
+        whyICare="I want practical setup advice",
+        intendedUse="Learning roadmap",
+        depth="Standard brief",
+        youtubeUrls="""
+        https://youtu.be/abc123XYZ
+        https://youtu.be/abc123XYZ,
+        youtube.com/watch?v=def456XYZ
+        https://example.com/not-youtube
+        """,
+    )
+
+    assert intake.youtube_urls == [
+        "https://youtu.be/abc123XYZ",
+        "https://youtube.com/watch?v=def456XYZ",
+    ]
+
+
+def test_research_prompt_includes_seeded_youtube_context() -> None:
+    intake = ResearchIntake(
+        nicheResearchTopic="Codex agent setup",
+        whyICare="I want practical setup advice",
+        intendedUse="Learning roadmap",
+        depth="Standard brief",
+        youtubeUrls=["https://youtu.be/abc123XYZ"],
+    )
+    prompt = build_research_prompt(
+        intake,
+        seed_source_context="- Title: Example video\n  Transcript status: transcript_unavailable",
+    )
+
+    assert "User-provided YouTube source context" in prompt
+    assert "Example video" in prompt
+    assert "transcript_unavailable" in prompt
 
 
 def test_youtube_video_id_detection() -> None:

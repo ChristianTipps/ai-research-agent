@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import StrEnum
+import re
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -100,6 +102,11 @@ class ResearchIntake(BaseModel):
         le=60,
     )
     output_type: str | None = Field(default=None, alias="outputType")
+    youtube_urls: list[str] = Field(
+        default_factory=list,
+        alias="youtubeUrls",
+        max_length=12,
+    )
 
     @field_validator("*", mode="before")
     @classmethod
@@ -107,6 +114,11 @@ class ResearchIntake(BaseModel):
         if isinstance(value, str):
             return value.strip()
         return value
+
+    @field_validator("youtube_urls", mode="before")
+    @classmethod
+    def normalize_youtube_urls(cls, value: Any) -> list[str]:
+        return _normalize_youtube_urls(value)
 
     @model_validator(mode="after")
     def require_custom_depth_when_custom(self) -> "ResearchIntake":
@@ -117,6 +129,54 @@ class ResearchIntake(BaseModel):
 
 class ResearchRunCreate(BaseModel):
     intake: ResearchIntake
+
+
+def _normalize_youtube_urls(value: Any) -> list[str]:
+    if value is None or value == "":
+        return []
+
+    raw_values = value if isinstance(value, list) else [value]
+    urls: list[str] = []
+    for raw in raw_values:
+        if raw is None:
+            continue
+        text = str(raw)
+        candidates = re.findall(
+            r"https?://[^\s,]+|www\.youtube\.com/[^\s,]+|youtube\.com/[^\s,]+|youtu\.be/[^\s,]+",
+            text,
+            flags=re.I,
+        )
+        if not candidates:
+            candidates = re.split(r"[\s,]+", text)
+        for candidate in candidates:
+            url = _clean_youtube_url(candidate)
+            if url:
+                urls.append(url)
+
+    result: list[str] = []
+    seen: set[str] = set()
+    for url in urls:
+        key = url.lower().rstrip("/")
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(url)
+    return result
+
+
+def _clean_youtube_url(value: str) -> str | None:
+    candidate = value.strip().strip("()[]{}<>.,;\"'")
+    if not candidate:
+        return None
+    if candidate.startswith("www."):
+        candidate = f"https://{candidate}"
+    elif candidate.startswith(("youtube.com/", "youtu.be/")):
+        candidate = f"https://{candidate}"
+    parsed = urlparse(candidate)
+    host = parsed.netloc.lower()
+    if host not in {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"}:
+        return None
+    return candidate
 
 
 class WorkflowStep(BaseModel):
