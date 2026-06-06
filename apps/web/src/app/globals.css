@@ -561,7 +561,8 @@ a {
 .badge.completed,
 .badge.done,
 .badge.approved,
-.badge.active {
+.badge.active,
+.badge.pass {
   border-color: rgba(47, 125, 79, 0.28);
   background: var(--success-soft);
   color: var(--success);
@@ -571,7 +572,8 @@ a {
 .badge.queued,
 .badge.checkpoint_saved,
 .badge.pending,
-.badge.waiting_for_approval {
+.badge.waiting_for_approval,
+.badge.warning {
   border-color: rgba(183, 131, 24, 0.3);
   background: var(--warning-soft);
   color: var(--warning);
@@ -581,13 +583,15 @@ a {
 .badge.canceled,
 .badge.blocked,
 .badge.declined,
-.badge.archived {
+.badge.archived,
+.badge.fail {
   border-color: rgba(184, 75, 64, 0.28);
   background: var(--danger-soft);
   color: var(--danger);
 }
 
-.badge.idle {
+.badge.idle,
+.badge.missing {
   background: var(--surface-soft);
 }
 
@@ -772,6 +776,15 @@ a {
   font-size: 0.86rem;
   line-height: 1.5;
   margin: 0;
+}
+
+.evidence-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 254, 252, 0.72);
+  display: grid;
+  gap: 7px;
+  padding: 10px;
 }
 
 .update-card-heading {

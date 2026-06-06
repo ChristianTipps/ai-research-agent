@@ -102,6 +102,7 @@ MemoryCategory = Literal[
 ]
 
 EvaluationStatus = Literal["pass", "fail", "warning"]
+EvidenceSummaryStatus = Literal["pass", "fail", "warning", "missing"]
 
 
 class ResearchIntake(BaseModel):
@@ -424,6 +425,19 @@ class ProposedUpdate(BaseModel):
     declined_at: datetime | None = Field(default=None, alias="declinedAt")
 
 
+class UpdateEvidenceSummary(BaseModel):
+    update_id: str = Field(alias="updateId")
+    evidence_run_ids: list[str] = Field(default_factory=list, alias="evidenceRunIds")
+    evaluated_run_ids: list[str] = Field(default_factory=list, alias="evaluatedRunIds")
+    eval_result_count: int = Field(default=0, alias="evalResultCount")
+    pass_count: int = Field(default=0, alias="passCount")
+    warning_count: int = Field(default=0, alias="warningCount")
+    fail_count: int = Field(default=0, alias="failCount")
+    status: EvidenceSummaryStatus = "missing"
+    summary: str
+    latest_result_at: datetime | None = Field(default=None, alias="latestResultAt")
+
+
 class WorkflowVersion(BaseModel):
     id: str
     version: str
@@ -439,6 +453,7 @@ class UpdatesOverview(BaseModel):
     proposed_updates: list[ProposedUpdate] = Field(alias="proposedUpdates")
     workflow_versions: list[WorkflowVersion] = Field(alias="workflowVersions")
     update_applications: list[UpdateApplicationRecord] = Field(default_factory=list, alias="updateApplications")
+    evidence_summaries: list[UpdateEvidenceSummary] = Field(default_factory=list, alias="evidenceSummaries")
 
 
 class UpdateActionCreate(BaseModel):

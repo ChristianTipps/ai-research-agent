@@ -1,6 +1,12 @@
 import json
 
-from ai_research_agent.schemas import ArtifactRecord, FeedbackCreate, ResearchIntake, initial_progress
+from ai_research_agent.schemas import (
+    ArtifactRecord,
+    EvaluationResult,
+    FeedbackCreate,
+    ResearchIntake,
+    initial_progress,
+)
 from ai_research_agent.agent import build_research_prompt
 from ai_research_agent.memory import (
     bootstrap_memory,
@@ -11,7 +17,7 @@ from ai_research_agent.memory import (
 )
 from ai_research_agent.source_strategy import build_source_strategy, resolve_research_budget_minutes
 from ai_research_agent.storage import LocalSQLiteRunRepository
-from ai_research_agent.updates import proposed_update_from_feedback
+from ai_research_agent.updates import proposed_update_from_feedback, summarize_update_evidence
 from ai_research_agent.youtube import extract_video_id
 
 
@@ -277,6 +283,59 @@ def test_approved_update_syncs_to_runtime_memory(tmp_path) -> None:
     assert application.status == "runtime_applied"
     assert result["memory_key"] in spaces.objects
     assert repo.list_update_applications()[0].update_id == update.id
+    assert repo.get_update_application_for_update(update.id).id == application.id
+
+
+def test_update_evidence_summary_counts_eval_results(tmp_path) -> None:
+    repo = LocalSQLiteRunRepository(str(tmp_path / "local.db"))
+    run = repo.create_run(
+        ResearchIntake(
+            nicheResearchTopic="Codex agents",
+            whyICare="Improve my research agent",
+            intendedUse="Feedback loop",
+            depth="Standard brief",
+        )
+    )
+    title, category, body = proposed_update_from_feedback(
+        run,
+        FeedbackCreate(comment="Add better eval checks before approving source policy changes."),
+    )
+    update = repo.create_proposed_update(
+        title=title,
+        category=category,
+        body=body,
+        evidence_run_ids=[run.id],
+    )
+    results = [
+        EvaluationResult(
+            id="eval_pass",
+            caseId="case_one",
+            status="pass",
+            score=1.0,
+            summary="Required signals found.",
+            runId=run.id,
+            evidence=["signal"],
+        ),
+        EvaluationResult(
+            id="eval_warning",
+            caseId="case_two",
+            status="warning",
+            score=0.7,
+            summary="Some optional signals were weak.",
+            runId=run.id,
+            evidence=["optional"],
+        ),
+    ]
+
+    summary = summarize_update_evidence([update], results)[0]
+
+    assert summary.update_id == update.id
+    assert summary.status == "warning"
+    assert summary.eval_result_count == 2
+    assert summary.pass_count == 1
+    assert summary.warning_count == 1
+    assert summary.fail_count == 0
+    assert summary.evaluated_run_ids == [run.id]
 
 
 def test_eval_results_are_created_and_persisted(tmp_path) -> None:

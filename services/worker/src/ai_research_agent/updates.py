@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from .schemas import FeedbackCreate, RunRecord, UpdateCategory
+from .schemas import (
+    EvaluationResult,
+    FeedbackCreate,
+    ProposedUpdate,
+    RunRecord,
+    UpdateCategory,
+    UpdateEvidenceSummary,
+)
 
 
 def proposed_update_from_feedback(run: RunRecord, feedback: FeedbackCreate) -> tuple[str, UpdateCategory, str]:
@@ -24,7 +31,13 @@ def approved_update_to_workflow_notes(title: str, category: UpdateCategory, body
             f"Approved source-policy update: {title}",
             _compact(body),
         )
-    if category in {"instructions", "workflow", "notion_formatting", "user_preference", "evaluation"}:
+    if category in {
+        "instructions",
+        "workflow",
+        "notion_formatting",
+        "user_preference",
+        "evaluation",
+    }:
         return (
             f"Approved runtime update: {title}",
             None,
@@ -33,6 +46,51 @@ def approved_update_to_workflow_notes(title: str, category: UpdateCategory, body
         f"Approved backlog update: {title}",
         None,
     )
+
+
+def summarize_update_evidence(
+    updates: list[ProposedUpdate],
+    evaluation_results: list[EvaluationResult],
+) -> list[UpdateEvidenceSummary]:
+    summaries: list[UpdateEvidenceSummary] = []
+    for update in updates:
+        evidence_run_ids = update.evidence_run_ids
+        matching_results = [
+            result
+            for result in evaluation_results
+            if result.run_id is not None and result.run_id in evidence_run_ids
+        ]
+        pass_count = sum(1 for result in matching_results if result.status == "pass")
+        warning_count = sum(1 for result in matching_results if result.status == "warning")
+        fail_count = sum(1 for result in matching_results if result.status == "fail")
+        evaluated_run_ids = sorted({result.run_id for result in matching_results if result.run_id})
+        latest_result_at = max((result.created_at for result in matching_results), default=None)
+        status = _evidence_status(
+            eval_result_count=len(matching_results),
+            warning_count=warning_count,
+            fail_count=fail_count,
+        )
+        summaries.append(
+            UpdateEvidenceSummary(
+                updateId=update.id,
+                evidenceRunIds=evidence_run_ids,
+                evaluatedRunIds=evaluated_run_ids,
+                evalResultCount=len(matching_results),
+                passCount=pass_count,
+                warningCount=warning_count,
+                failCount=fail_count,
+                status=status,
+                summary=_evidence_summary_text(
+                    evidence_run_count=len(evidence_run_ids),
+                    eval_result_count=len(matching_results),
+                    pass_count=pass_count,
+                    warning_count=warning_count,
+                    fail_count=fail_count,
+                ),
+                latestResultAt=latest_result_at,
+            )
+        )
+    return summaries
 
 
 def _classify_feedback(comment: str) -> UpdateCategory:
@@ -68,3 +126,31 @@ def _title_for_category(category: UpdateCategory, topic: str) -> str:
 
 def _compact(text: str) -> str:
     return " ".join(text.split())[:900]
+
+
+def _evidence_status(*, eval_result_count: int, warning_count: int, fail_count: int) -> str:
+    if eval_result_count == 0:
+        return "missing"
+    if fail_count:
+        return "fail"
+    if warning_count:
+        return "warning"
+    return "pass"
+
+
+def _evidence_summary_text(
+    *,
+    evidence_run_count: int,
+    eval_result_count: int,
+    pass_count: int,
+    warning_count: int,
+    fail_count: int,
+) -> str:
+    if eval_result_count == 0:
+        if evidence_run_count == 0:
+            return "No evidence runs are attached to this update yet."
+        return "Evidence runs exist, but no eval results have been recorded for them yet."
+    return (
+        f"{eval_result_count} eval result(s): "
+        f"{pass_count} pass, {warning_count} warning, {fail_count} fail."
+    )

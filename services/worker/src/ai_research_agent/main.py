@@ -31,11 +31,23 @@ from .schemas import (
 )
 from .spaces import SpacesClient
 from .storage import RunRepository, create_repository
-from .updates import approved_update_to_workflow_notes, proposed_update_from_feedback
+from .updates import (
+    approved_update_to_workflow_notes,
+    proposed_update_from_feedback,
+    summarize_update_evidence,
+)
 from .worker import process_research_run
 
 settings = get_settings()
 repository = create_repository(settings.database_url, settings.local_sqlite_path)
+RUNTIME_UPDATE_CATEGORIES = {
+    "instructions",
+    "source_policy",
+    "workflow",
+    "notion_formatting",
+    "user_preference",
+    "evaluation",
+}
 
 app = FastAPI(title="AI Research Agent Worker", version="0.1.0")
 app.add_middleware(
@@ -180,10 +192,15 @@ async def save_feedback(
 
 @app.get("/updates", response_model=UpdatesOverview, response_model_by_alias=True)
 async def list_updates(_: None = Depends(authorize)) -> UpdatesOverview:
+    proposed_updates = repository.list_proposed_updates()
     return UpdatesOverview(
-        proposedUpdates=repository.list_proposed_updates(),
+        proposedUpdates=proposed_updates,
         workflowVersions=repository.list_workflow_versions(),
         updateApplications=repository.list_update_applications(),
+        evidenceSummaries=summarize_update_evidence(
+            proposed_updates,
+            repository.list_evaluation_results(),
+        ),
     )
 
 
@@ -194,13 +211,29 @@ async def approve_update(
     _: None = Depends(authorize),
 ) -> ActionResponse:
     authorize_update(payload.passcode)
-    update = repository.set_proposed_update_status(update_id, "approved")
+    current_update = repository.get_proposed_update(update_id)
+    if current_update is None:
+        raise HTTPException(status_code=404, detail="Update not found")
+    if current_update.status == "declined":
+        raise HTTPException(status_code=409, detail="Declined updates cannot be approved.")
+    existing_application = repository.get_update_application_for_update(update_id)
+    if current_update.status == "approved" and existing_application is not None:
+        return ActionResponse(
+            status=current_update.status,
+            message=f"Update already approved; application {existing_application.id} is recorded.",
+        )
+
+    update = (
+        current_update
+        if current_update.status == "approved"
+        else repository.set_proposed_update_status(update_id, "approved")
+    )
     notes, source_policy = approved_update_to_workflow_notes(
         update.title,
         update.category,
         update.body,
     )
-    if update.category in {"instructions", "source_policy", "workflow", "notion_formatting", "user_preference", "evaluation"}:
+    if update.category in RUNTIME_UPDATE_CATEGORIES:
         workflow = repository.create_workflow_version(
             version=f"research-workflow-{update.id}",
             notes=notes,
@@ -234,6 +267,18 @@ async def decline_update(
     _: None = Depends(authorize),
 ) -> ActionResponse:
     authorize_update(payload.passcode)
+    current_update = repository.get_proposed_update(update_id)
+    if current_update is None:
+        raise HTTPException(status_code=404, detail="Update not found")
+    if current_update.status == "approved":
+        raise HTTPException(status_code=409, detail="Approved updates cannot be declined.")
+    existing_application = repository.get_update_application_for_update(update_id)
+    if current_update.status == "declined" and existing_application is not None:
+        return ActionResponse(
+            status=current_update.status,
+            message=f"Update already declined; application {existing_application.id} is recorded.",
+        )
+
     update = repository.set_proposed_update_status(update_id, "declined")
     repository.create_update_application(
         update_id=update.id,

@@ -65,6 +65,7 @@ class RunRepository(Protocol):
         body: str,
         evidence_run_ids: list[str],
     ) -> ProposedUpdate: ...
+    def get_proposed_update(self, update_id: str) -> ProposedUpdate | None: ...
     def list_proposed_updates(self) -> list[ProposedUpdate]: ...
     def set_proposed_update_status(self, update_id: str, status: UpdateStatus) -> ProposedUpdate: ...
     def create_workflow_version(
@@ -88,6 +89,7 @@ class RunRepository(Protocol):
         artifact_key: str | None = None,
         workflow_version: str | None = None,
     ) -> UpdateApplicationRecord: ...
+    def get_update_application_for_update(self, update_id: str) -> UpdateApplicationRecord | None: ...
     def list_update_applications(self) -> list[UpdateApplicationRecord]: ...
     def save_evaluation_results(self, results: list[EvaluationResult]) -> None: ...
     def list_evaluation_results(self) -> list[EvaluationResult]: ...
@@ -513,6 +515,11 @@ class LocalSQLiteRunRepository:
             ).fetchall()
         return [self._row_to_update(row) for row in rows]
 
+    def get_proposed_update(self, update_id: str) -> ProposedUpdate | None:
+        with self._connect() as conn:
+            row = conn.execute("select * from proposed_updates where id = ?", (update_id,)).fetchone()
+        return self._row_to_update(row) if row else None
+
     def set_proposed_update_status(self, update_id: str, status: UpdateStatus) -> ProposedUpdate:
         now = _iso_now()
         with self._connect() as conn:
@@ -602,6 +609,14 @@ class LocalSQLiteRunRepository:
             ).fetchall()
         return [self._row_to_update_application(row) for row in rows]
 
+    def get_update_application_for_update(self, update_id: str) -> UpdateApplicationRecord | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "select * from update_applications where update_id = ? order by created_at desc limit 1",
+                (update_id,),
+            ).fetchone()
+        return self._row_to_update_application(row) if row else None
+
     def save_evaluation_results(self, results: list[EvaluationResult]) -> None:
         with self._connect() as conn:
             for result in results:
@@ -632,11 +647,10 @@ class LocalSQLiteRunRepository:
         return [self._row_to_evaluation_result(row) for row in rows]
 
     def _get_proposed_update(self, update_id: str) -> ProposedUpdate:
-        with self._connect() as conn:
-            row = conn.execute("select * from proposed_updates where id = ?", (update_id,)).fetchone()
-        if row is None:
+        update = self.get_proposed_update(update_id)
+        if update is None:
             raise KeyError(update_id)
-        return self._row_to_update(row)
+        return update
 
     def _get_workflow_version(self, version_id: str) -> WorkflowVersion:
         with self._connect() as conn:
@@ -1102,6 +1116,11 @@ class PostgresRunRepository:
             ).fetchall()
         return [self._row_to_update(row) for row in rows]
 
+    def get_proposed_update(self, update_id: str) -> ProposedUpdate | None:
+        with self._connect() as conn:
+            row = conn.execute("select * from proposed_updates where id = %s", (update_id,)).fetchone()
+        return self._row_to_update(row) if row else None
+
     def set_proposed_update_status(self, update_id: str, status: UpdateStatus) -> ProposedUpdate:
         with self._connect() as conn:
             conn.execute(
@@ -1188,6 +1207,14 @@ class PostgresRunRepository:
             ).fetchall()
         return [self._row_to_update_application(row) for row in rows]
 
+    def get_update_application_for_update(self, update_id: str) -> UpdateApplicationRecord | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "select * from update_applications where update_id = %s order by created_at desc limit 1",
+                (update_id,),
+            ).fetchone()
+        return self._row_to_update_application(row) if row else None
+
     def save_evaluation_results(self, results: list[EvaluationResult]) -> None:
         with self._connect() as conn:
             for result in results:
@@ -1226,11 +1253,10 @@ class PostgresRunRepository:
         return [self._row_to_evaluation_result(row) for row in rows]
 
     def _get_proposed_update(self, update_id: str) -> ProposedUpdate:
-        with self._connect() as conn:
-            row = conn.execute("select * from proposed_updates where id = %s", (update_id,)).fetchone()
-        if row is None:
+        update = self.get_proposed_update(update_id)
+        if update is None:
             raise KeyError(update_id)
-        return self._row_to_update(row)
+        return update
 
     def _get_workflow_version(self, version_id: str) -> WorkflowVersion:
         with self._connect() as conn:

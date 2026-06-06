@@ -96,6 +96,7 @@ export type MemoryCategory =
   | "backlog";
 
 export type EvaluationStatus = "pass" | "fail" | "warning";
+export type EvidenceSummaryStatus = EvaluationStatus | "missing";
 
 export interface ResearchIntake {
   nicheResearchTopic: string;
@@ -311,6 +312,19 @@ export interface ProposedUpdate {
   declinedAt?: string;
 }
 
+export interface UpdateEvidenceSummary {
+  updateId: string;
+  evidenceRunIds: string[];
+  evaluatedRunIds: string[];
+  evalResultCount: number;
+  passCount: number;
+  warningCount: number;
+  failCount: number;
+  status: EvidenceSummaryStatus;
+  summary: string;
+  latestResultAt?: string;
+}
+
 export interface WorkflowVersion {
   id: string;
   version: string;
@@ -326,6 +340,7 @@ export interface UpdatesOverview {
   proposedUpdates: ProposedUpdate[];
   workflowVersions: WorkflowVersion[];
   updateApplications: UpdateApplicationRecord[];
+  evidenceSummaries: UpdateEvidenceSummary[];
 }
 
 export const researchBudgetDefaults: Record<DepthPreset, number> = {

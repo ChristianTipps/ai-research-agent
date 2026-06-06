@@ -9,6 +9,7 @@ import type {
   ProposedUpdate,
   ToolConfigRecord,
   UpdateApplicationRecord,
+  UpdateEvidenceSummary,
   UpdatesOverview,
   WorkflowVersion,
 } from "@ai-research-agent/shared";
@@ -118,6 +119,7 @@ export function UpdatesWorkspace() {
   const toolConfigs = memory?.toolConfigs ?? [];
   const cases = evals?.cases ?? [];
   const results = evals?.results ?? [];
+  const evidenceByUpdateId = new Map((overview?.evidenceSummaries ?? []).map((summary) => [summary.updateId, summary]));
 
   return (
     <main className="shell">
@@ -192,6 +194,7 @@ export function UpdatesWorkspace() {
                   <UpdateCard
                     key={update.id}
                     update={update}
+                    evidence={evidenceByUpdateId.get(update.id)}
                     busy={busy}
                     onApprove={() => runAction(update.id, "approve")}
                     onDecline={() => runAction(update.id, "decline")}
@@ -285,11 +288,13 @@ export function UpdatesWorkspace() {
 
 function UpdateCard({
   update,
+  evidence,
   busy,
   onApprove,
   onDecline,
 }: {
   update: ProposedUpdate;
+  evidence?: UpdateEvidenceSummary;
   busy: boolean;
   onApprove: () => void;
   onDecline: () => void;
@@ -305,6 +310,7 @@ function UpdateCard({
         <span>{new Date(update.updatedAt).toLocaleString()}</span>
       </div>
       <p>{update.body}</p>
+      {evidence ? <UpdateEvidence evidence={evidence} /> : null}
       <div className="button-row">
         <button className="button" type="button" onClick={onApprove} disabled={busy || update.status !== "pending"}>
           <CircleCheck size={16} aria-hidden />
@@ -316,6 +322,32 @@ function UpdateCard({
         </button>
       </div>
     </article>
+  );
+}
+
+function UpdateEvidence({ evidence }: { evidence: UpdateEvidenceSummary }) {
+  return (
+    <div className="evidence-panel">
+      <div className="update-card-heading">
+        <strong>Evidence</strong>
+        <span className={`badge ${evidenceBadgeClass(evidence.status)}`}>{evidence.status}</span>
+      </div>
+      <p>{evidence.summary}</p>
+      <div className="source-meta">
+        <span>{evidence.evidenceRunIds.length} evidence run(s)</span>
+        <span>{evidence.evalResultCount} eval result(s)</span>
+        <span>{evidence.evaluatedRunIds.length} evaluated run(s)</span>
+        {evidence.latestResultAt ? <span>{new Date(evidence.latestResultAt).toLocaleString()}</span> : null}
+      </div>
+      {evidence.evidenceRunIds.length ? (
+        <div className="source-meta">
+          {evidence.evidenceRunIds.slice(0, 4).map((runId) => (
+            <span key={runId}>{runId}</span>
+          ))}
+          {evidence.evidenceRunIds.length > 4 ? <span>+{evidence.evidenceRunIds.length - 4} more</span> : null}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -438,4 +470,10 @@ function MetricTile({ label, value }: { label: string; value: string }) {
 
 function formatLabel(value: string) {
   return value.replaceAll("_", " ");
+}
+
+function evidenceBadgeClass(status: UpdateEvidenceSummary["status"]) {
+  if (status === "pass") return "pass";
+  if (status === "fail") return "fail";
+  return status;
 }
