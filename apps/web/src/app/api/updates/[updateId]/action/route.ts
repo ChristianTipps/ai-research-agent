@@ -1,4 +1,4 @@
-import { runUpdateAction } from "@/lib/backend";
+import { BackendRequestError, runUpdateAction } from "@/lib/backend";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -14,6 +14,13 @@ export async function POST(request: Request, context: { params: Promise<{ update
     return NextResponse.json({ error: "Invalid update action." }, { status: 400 });
   }
   const { updateId } = await context.params;
-  const response = await runUpdateAction(updateId, parsed.data.action, parsed.data.passcode);
-  return NextResponse.json(response);
+  try {
+    const response = await runUpdateAction(updateId, parsed.data.action, parsed.data.passcode);
+    return NextResponse.json(response);
+  } catch (error) {
+    if (error instanceof BackendRequestError) {
+      return NextResponse.json(error.payload, { status: error.status });
+    }
+    throw error;
+  }
 }

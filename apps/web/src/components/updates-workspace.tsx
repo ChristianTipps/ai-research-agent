@@ -25,6 +25,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { ThemeToggle } from "./theme-toggle";
 
 export function UpdatesWorkspace() {
   const [overview, setOverview] = useState<UpdatesOverview | null>(null);
@@ -66,7 +67,7 @@ export function UpdatesWorkspace() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action, passcode }),
       });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readErrorMessage(response));
       await loadAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : `Could not ${action} update.`);
@@ -84,7 +85,7 @@ export function UpdatesWorkspace() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ passcode }),
       });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readErrorMessage(response));
       await loadAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not bootstrap memory.");
@@ -102,7 +103,7 @@ export function UpdatesWorkspace() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ passcode }),
       });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readErrorMessage(response));
       setEvals((await response.json()) as EvalsOverview);
       await loadAll();
     } catch (err) {
@@ -135,6 +136,7 @@ export function UpdatesWorkspace() {
             </div>
           </div>
           <div className="button-row">
+            <ThemeToggle />
             <button className="button" type="button" onClick={loadAll} disabled={busy}>
               <RefreshCw size={16} aria-hidden />
               Refresh
@@ -470,6 +472,19 @@ function MetricTile({ label, value }: { label: string; value: string }) {
 
 function formatLabel(value: string) {
   return value.replaceAll("_", " ");
+}
+
+async function readErrorMessage(response: Response) {
+  const text = await response.text();
+  if (!text) return `Request failed with ${response.status}.`;
+  try {
+    const payload = JSON.parse(text) as { detail?: unknown; error?: unknown };
+    if (typeof payload.detail === "string") return payload.detail;
+    if (typeof payload.error === "string") return payload.error;
+  } catch {
+    return text;
+  }
+  return text;
 }
 
 function evidenceBadgeClass(status: UpdateEvidenceSummary["status"]) {

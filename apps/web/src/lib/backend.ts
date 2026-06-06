@@ -3,6 +3,18 @@ import type { EvalsOverview, MemoryDocument, MemoryOverview, ResearchIntake, Run
 const backendUrl = process.env.AGENT_BACKEND_URL ?? "http://127.0.0.1:8080";
 const backendToken = process.env.AGENT_BACKEND_TOKEN;
 
+export class BackendRequestError extends Error {
+  status: number;
+  payload: unknown;
+
+  constructor(message: string, status: number, payload: unknown) {
+    super(message);
+    this.name = "BackendRequestError";
+    this.status = status;
+    this.payload = payload;
+  }
+}
+
 function headers() {
   const result: Record<string, string> = {
     "content-type": "application/json",
@@ -16,9 +28,33 @@ function headers() {
 async function parseResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `Backend request failed with ${response.status}`);
+    const payload = parseErrorPayload(text);
+    throw new BackendRequestError(
+      errorMessageFromPayload(payload, response.status),
+      response.status,
+      payload,
+    );
   }
   return (await response.json()) as T;
+}
+
+function parseErrorPayload(text: string) {
+  if (!text) return { error: "Backend request failed." };
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return { error: text };
+  }
+}
+
+function errorMessageFromPayload(payload: unknown, status: number) {
+  if (payload && typeof payload === "object") {
+    const detail = "detail" in payload ? payload.detail : undefined;
+    const error = "error" in payload ? payload.error : undefined;
+    if (typeof detail === "string") return detail;
+    if (typeof error === "string") return error;
+  }
+  return `Backend request failed with ${status}`;
 }
 
 export async function createResearchRun(intake: ResearchIntake): Promise<RunRecord> {

@@ -1,4 +1,4 @@
-import { bootstrapMemory } from "@/lib/backend";
+import { BackendRequestError, bootstrapMemory } from "@/lib/backend";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -12,6 +12,13 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid bootstrap request." }, { status: 400 });
   }
-  const memory = await bootstrapMemory(parsed.data.passcode);
-  return NextResponse.json(memory);
+  try {
+    const memory = await bootstrapMemory(parsed.data.passcode);
+    return NextResponse.json(memory);
+  } catch (error) {
+    if (error instanceof BackendRequestError) {
+      return NextResponse.json(error.payload, { status: error.status });
+    }
+    throw error;
+  }
 }

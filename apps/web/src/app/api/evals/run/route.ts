@@ -1,4 +1,4 @@
-import { runEvals } from "@/lib/backend";
+import { BackendRequestError, runEvals } from "@/lib/backend";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -13,6 +13,13 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid eval run request." }, { status: 400 });
   }
-  const evals = await runEvals(parsed.data);
-  return NextResponse.json(evals);
+  try {
+    const evals = await runEvals(parsed.data);
+    return NextResponse.json(evals);
+  } catch (error) {
+    if (error instanceof BackendRequestError) {
+      return NextResponse.json(error.payload, { status: error.status });
+    }
+    throw error;
+  }
 }

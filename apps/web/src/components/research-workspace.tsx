@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { StatusPill } from "./status-pill";
+import { ThemeToggle } from "./theme-toggle";
 
 const emptyIntake: ResearchIntake = {
   nicheResearchTopic: "",
@@ -197,6 +198,7 @@ export function ResearchWorkspace() {
             </div>
           </div>
           <div className="topbar-status">
+            <ThemeToggle />
             <a className="button" href="/updates">
               Updates
             </a>
