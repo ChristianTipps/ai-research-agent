@@ -739,8 +739,8 @@ class PostgresRunRepository:
                     RunStatus.queued.value,
                     WorkflowPhase.intake_validation.value,
                     intake.custom_depth or intake.depth,
-                    self.Jsonb(intake.model_dump(by_alias=True)),
-                    self.Jsonb(progress.model_dump(by_alias=True)),
+                    self.Jsonb(intake.model_dump(by_alias=True, mode="json")),
+                    self.Jsonb(progress.model_dump(by_alias=True, mode="json")),
                 ),
             )
         self.append_event(run_id, "run_created", "Run created and queued for DigitalOcean worker.")
@@ -784,7 +784,7 @@ class PostgresRunRepository:
                 (
                     (status or current.status).value,
                     (phase or current.phase).value,
-                    self.Jsonb((progress or current.progress).model_dump(by_alias=True)),
+                    self.Jsonb((progress or current.progress).model_dump(by_alias=True, mode="json")),
                     result_markdown,
                     error,
                     run_id,
@@ -861,7 +861,7 @@ class PostgresRunRepository:
                 values (%s, %s, %s)
                 on conflict (id) do update set report = excluded.report
                 """,
-                (f"trust_{run_id}", run_id, self.Jsonb(trust_report.model_dump(by_alias=True))),
+                (f"trust_{run_id}", run_id, self.Jsonb(trust_report.model_dump(by_alias=True, mode="json"))),
             )
 
     def save_locations(
@@ -902,7 +902,7 @@ class PostgresRunRepository:
                     spaces_summary_key,
                     final_report_key,
                     trust_report_key,
-                    self.Jsonb(current.progress.model_dump(by_alias=True)),
+                    self.Jsonb(current.progress.model_dump(by_alias=True, mode="json")),
                     run_id,
                 ),
             )

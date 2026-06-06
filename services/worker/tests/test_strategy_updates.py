@@ -1,4 +1,6 @@
-from ai_research_agent.schemas import FeedbackCreate, ResearchIntake
+import json
+
+from ai_research_agent.schemas import ArtifactRecord, FeedbackCreate, ResearchIntake, initial_progress
 from ai_research_agent.source_strategy import build_source_strategy, resolve_research_budget_minutes
 from ai_research_agent.storage import LocalSQLiteRunRepository
 from ai_research_agent.updates import proposed_update_from_feedback
@@ -70,3 +72,17 @@ def test_feedback_creates_pending_update_and_approval_versions(tmp_path) -> None
     approved = repo.set_proposed_update_status(update.id, "approved")
     assert approved.status == "approved"
     assert repo.list_approved_runtime_updates()[0].id == update.id
+
+
+def test_progress_with_artifact_records_is_json_serializable() -> None:
+    progress = initial_progress()
+    progress.artifact_records.append(
+        ArtifactRecord(
+            id="art_test",
+            kind="source_artifact",
+            label="Test source",
+            key="source-artifacts/test.json",
+        )
+    )
+
+    json.dumps(progress.model_dump(by_alias=True, mode="json"))
