@@ -20,6 +20,7 @@ import {
   FileText,
   FlaskConical,
   RefreshCw,
+  SearchCheck,
   ServerCog,
   ShieldCheck,
   XCircle,
@@ -137,6 +138,10 @@ export function UpdatesWorkspace() {
           </div>
           <div className="button-row">
             <ThemeToggle />
+            <a className="button" href="/">
+              <SearchCheck size={16} aria-hidden />
+              Research
+            </a>
             <button className="button" type="button" onClick={loadAll} disabled={busy}>
               <RefreshCw size={16} aria-hidden />
               Refresh
