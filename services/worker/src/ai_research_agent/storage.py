@@ -564,7 +564,7 @@ class LocalSQLiteRunRepository:
                 """
                 select * from proposed_updates
                 where status = 'approved'
-                  and category in ('instructions', 'source_policy', 'workflow', 'user_preference', 'evaluation')
+                  and category in ('instructions', 'source_policy', 'workflow', 'notion_formatting', 'user_preference', 'evaluation')
                 order by updated_at desc
                 limit 20
                 """
@@ -1151,7 +1151,7 @@ class PostgresRunRepository:
                 """
                 select * from proposed_updates
                 where status = 'approved'
-                  and category in ('instructions', 'source_policy', 'workflow', 'user_preference', 'evaluation')
+                  and category in ('instructions', 'source_policy', 'workflow', 'notion_formatting', 'user_preference', 'evaluation')
                 order by updated_at desc
                 limit 20
                 """

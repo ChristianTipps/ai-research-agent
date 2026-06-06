@@ -179,6 +179,33 @@ def test_feedback_creates_pending_update_and_approval_versions(tmp_path) -> None
     assert repo.list_approved_runtime_updates()[0].id == update.id
 
 
+def test_notion_formatting_feedback_is_runtime_update(tmp_path) -> None:
+    repo = LocalSQLiteRunRepository(str(tmp_path / "local.db"))
+    run = repo.create_run(
+        ResearchIntake(
+            nicheResearchTopic="Notion report formatting",
+            whyICare="Improve learning output",
+            intendedUse="Feedback loop",
+            depth="Standard brief",
+        )
+    )
+    title, category, body = proposed_update_from_feedback(
+        run,
+        FeedbackCreate(comment="Keep bold text clean in Notion and fix numbered list formatting."),
+    )
+    update = repo.create_proposed_update(
+        title=title,
+        category=category,
+        body=body,
+        evidence_run_ids=[run.id],
+    )
+
+    assert update.category == "notion_formatting"
+    approved = repo.set_proposed_update_status(update.id, "approved")
+
+    assert approved.id in {item.id for item in repo.list_approved_runtime_updates()}
+
+
 def test_progress_with_artifact_records_is_json_serializable() -> None:
     progress = initial_progress()
     progress.artifact_records.append(

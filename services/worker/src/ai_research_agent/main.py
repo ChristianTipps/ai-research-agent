@@ -200,7 +200,7 @@ async def approve_update(
         update.category,
         update.body,
     )
-    if update.category in {"instructions", "source_policy", "workflow", "user_preference", "evaluation"}:
+    if update.category in {"instructions", "source_policy", "workflow", "notion_formatting", "user_preference", "evaluation"}:
         workflow = repository.create_workflow_version(
             version=f"research-workflow-{update.id}",
             notes=notes,

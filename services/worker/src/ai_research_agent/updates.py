@@ -24,7 +24,7 @@ def approved_update_to_workflow_notes(title: str, category: UpdateCategory, body
             f"Approved source-policy update: {title}",
             _compact(body),
         )
-    if category in {"instructions", "workflow", "user_preference", "evaluation"}:
+    if category in {"instructions", "workflow", "notion_formatting", "user_preference", "evaluation"}:
         return (
             f"Approved runtime update: {title}",
             None,

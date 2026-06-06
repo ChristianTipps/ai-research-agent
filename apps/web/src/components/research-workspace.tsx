@@ -55,6 +55,7 @@ export function ResearchWorkspace() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
+  const [feedbackStatus, setFeedbackStatus] = useState("");
   const [reportExpanded, setReportExpanded] = useState(false);
   const [youtubeUrlText, setYoutubeUrlText] = useState("");
 
@@ -161,6 +162,7 @@ export function ResearchWorkspace() {
     if (!run || !feedback.trim()) return;
     setBusy(true);
     setError(null);
+    setFeedbackStatus("");
     try {
       const response = await fetch(`/api/research/${run.id}/action`, {
         method: "POST",
@@ -168,7 +170,12 @@ export function ResearchWorkspace() {
         body: JSON.stringify({ action: "feedback", comment: feedback }),
       });
       if (!response.ok) throw new Error(await response.text());
+      const refreshed = await fetch(`/api/research/${run.id}`, { cache: "no-store" });
+      if (refreshed.ok) {
+        setRun((await refreshed.json()) as RunRecord);
+      }
       setFeedback("");
+      setFeedbackStatus("Feedback saved as a pending proposed update.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save feedback.");
     } finally {
@@ -463,6 +470,7 @@ export function ResearchWorkspace() {
                       <CircleCheck size={16} aria-hidden />
                       Save feedback
                     </button>
+                    {feedbackStatus ? <div className="form-note success">{feedbackStatus}</div> : null}
                   </div>
                 </div>
               </>
