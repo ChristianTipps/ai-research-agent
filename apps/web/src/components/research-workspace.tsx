@@ -5,7 +5,9 @@ import {
   researchBudgetDefaults,
   requiredFields,
   skillLevels,
+  type ArtifactRecord,
   type DepthPreset,
+  type MemoryContext,
   type ResearchIntake,
   type RunRecord,
   type SkillLevel,
@@ -362,6 +364,8 @@ export function ResearchWorkspace() {
                   <Metric icon={<SlidersHorizontal size={16} aria-hidden />} label="Budget" value={`${run.intake.researchBudgetMinutes ?? researchBudgetDefaults[run.intake.depth]} min`} />
                   <Metric icon={<Database size={16} aria-hidden />} label="Updated" value={formatDate(run.updatedAt)} />
                   <Metric icon={<ShieldCheck size={16} aria-hidden />} label="Run ID" value={run.id} />
+                  <Metric icon={<Database size={16} aria-hidden />} label="Memory" value={run.progress.memoryContext?.workflowVersion ?? run.progress.workflowVersion} />
+                  <Metric icon={<CircleCheck size={16} aria-hidden />} label="Feedback" value={`${run.progress.proposedUpdateCount} proposed`} />
                 </div>
 
                 <div className="content-grid">
@@ -413,6 +417,11 @@ export function ResearchWorkspace() {
                     title="Approval Requests"
                     items={run.progress.approvalRequests.map((request) => `${request.title}: ${request.status}`)}
                   />
+                </div>
+
+                <div className="content-grid">
+                  <MemoryContextPanel memoryContext={run.progress.memoryContext} />
+                  <ArtifactPanel artifacts={run.progress.artifactRecords} />
                 </div>
 
                 <div className="panel section-gap">
@@ -565,6 +574,47 @@ function PanelList({ title, items }: { title: string; items: string[] }) {
           ))
         ) : (
           <div className="empty">No records yet.</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MemoryContextPanel({ memoryContext }: { memoryContext?: MemoryContext }) {
+  const items = memoryContext
+    ? [
+        `Workflow: ${memoryContext.workflowVersion}`,
+        `Instructions: ${memoryContext.instructionVersion}`,
+        `Source policy: ${memoryContext.sourcePolicyVersion}`,
+        `Notion formatting: ${memoryContext.notionFormattingVersion}`,
+        `Learning output: ${memoryContext.learningOutputVersion}`,
+        `Approved runtime updates: ${memoryContext.approvedUpdateCount}`,
+        ...memoryContext.documents.map((document) => `${document.title}: ${document.key}`),
+      ]
+    : [];
+  return <PanelList title="Operating Memory Used" items={items} />;
+}
+
+function ArtifactPanel({ artifacts }: { artifacts: ArtifactRecord[] }) {
+  return (
+    <div className="panel">
+      <div className="panel-header">
+        <h2>Saved Artifacts</h2>
+      </div>
+      <div className="panel-body list">
+        {artifacts.length ? (
+          artifacts.slice(0, 10).map((artifact) => (
+            <div className="list-item" key={artifact.id}>
+              <strong>{artifact.label}</strong>
+              <div className="source-meta">
+                <span>{formatLabel(artifact.kind)}</span>
+                <span>{artifact.contentType}</span>
+              </div>
+              <span className="muted">{artifact.key}</span>
+            </div>
+          ))
+        ) : (
+          <div className="empty">No artifacts yet.</div>
         )}
       </div>
     </div>

@@ -2,10 +2,54 @@ import json
 
 from ai_research_agent.schemas import ArtifactRecord, FeedbackCreate, ResearchIntake, initial_progress
 from ai_research_agent.agent import build_research_prompt
+from ai_research_agent.memory import (
+    bootstrap_memory,
+    list_evaluation_cases,
+    load_memory_context,
+    run_quality_evaluations,
+    sync_approved_update_to_spaces,
+)
 from ai_research_agent.source_strategy import build_source_strategy, resolve_research_budget_minutes
 from ai_research_agent.storage import LocalSQLiteRunRepository
 from ai_research_agent.updates import proposed_update_from_feedback
 from ai_research_agent.youtube import extract_video_id
+
+
+class FakeSpaces:
+    bucket = "test"
+    region = "sfo3"
+    endpoint = "https://example.test"
+    access_key_id = "access"
+    secret_access_key = "secret"
+
+    def __init__(self) -> None:
+        self.objects: dict[str, str] = {}
+
+    @property
+    def enabled(self) -> bool:
+        return True
+
+    def object_exists(self, key: str) -> bool:
+        return key in self.objects
+
+    def save_text(self, key: str, text: str, content_type: str = "text/plain; charset=utf-8") -> str:
+        self.objects[key] = text
+        return key
+
+    def save_markdown(self, key: str, markdown: str) -> str:
+        self.objects[key] = markdown
+        return key
+
+    def save_json(self, key: str, payload):
+        self.objects[key] = json.dumps(payload)
+        return key
+
+    def get_text(self, key: str):
+        return self.objects.get(key)
+
+    def get_json(self, key: str):
+        value = self.objects.get(key)
+        return json.loads(value) if value is not None else None
 
 
 def test_budget_defaults_and_custom_minutes() -> None:
@@ -147,3 +191,79 @@ def test_progress_with_artifact_records_is_json_serializable() -> None:
     )
 
     json.dumps(progress.model_dump(by_alias=True, mode="json"))
+
+
+def test_memory_bootstrap_is_idempotent_and_loads_context() -> None:
+    spaces = FakeSpaces()
+    bootstrap_memory(spaces)  # type: ignore[arg-type]
+    spaces.objects["instructions/base.md"] = "custom approved base"
+    bootstrap_memory(spaces)  # type: ignore[arg-type]
+
+    assert spaces.objects["instructions/base.md"] == "custom approved base"
+    assert "tool-configs/openai-web-search.json" in spaces.objects
+    assert "workflows/versions/research-workflow-v1.json" in spaces.objects
+
+    context = load_memory_context(spaces, approved_update_count=2)  # type: ignore[arg-type]
+    assert context.approved_update_count == 2
+    assert context.workflow_version == "research-workflow-v1"
+    assert any(document.key == "instructions/base.md" for document in context.documents)
+
+
+def test_approved_update_syncs_to_runtime_memory(tmp_path) -> None:
+    repo = LocalSQLiteRunRepository(str(tmp_path / "local.db"))
+    run = repo.create_run(
+        ResearchIntake(
+            nicheResearchTopic="Codex agents",
+            whyICare="Improve my research agent",
+            intendedUse="Feedback loop",
+            depth="Standard brief",
+        )
+    )
+    title, category, body = proposed_update_from_feedback(
+        run,
+        FeedbackCreate(comment="Use stronger source trust checks."),
+    )
+    update = repo.create_proposed_update(
+        title=title,
+        category=category,
+        body=body,
+        evidence_run_ids=[run.id],
+    )
+    update = repo.set_proposed_update_status(update.id, "approved")
+    spaces = FakeSpaces()
+
+    result = sync_approved_update_to_spaces(
+        spaces,  # type: ignore[arg-type]
+        update,
+        workflow_version=f"research-workflow-{update.id}",
+    )
+    application = repo.create_update_application(
+        update_id=update.id,
+        category=update.category,
+        status=result["status"] or "runtime_applied",
+        summary=result["summary"] or "",
+        memory_key=result["memory_key"],
+        artifact_key=result["artifact_key"],
+        workflow_version=f"research-workflow-{update.id}",
+    )
+
+    assert application.status == "runtime_applied"
+    assert result["memory_key"] in spaces.objects
+    assert repo.list_update_applications()[0].update_id == update.id
+
+
+def test_eval_results_are_created_and_persisted(tmp_path) -> None:
+    repo = LocalSQLiteRunRepository(str(tmp_path / "local.db"))
+    spaces = FakeSpaces()
+    bootstrap_memory(spaces)  # type: ignore[arg-type]
+    cases = list_evaluation_cases(spaces)  # type: ignore[arg-type]
+    results = run_quality_evaluations(
+        run_id="run_test",
+        report_markdown="# 1. Simple explanation\n\n# 5. Thesis, antithesis, and synthesis\n\n# 9. One small exercise and light quiz\n\n# 10. Sources and confidence\nConfidence: high.",
+        cases=cases,
+    )
+    repo.save_evaluation_results(results)
+
+    assert results
+    saved_case_ids = {result.case_id for result in repo.list_evaluation_results()}
+    assert {result.case_id for result in results} <= saved_case_ids

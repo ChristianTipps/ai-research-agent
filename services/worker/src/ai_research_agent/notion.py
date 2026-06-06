@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import httpx
 
-from .schemas import ResearchIntake
+from .schemas import MemoryContext, ResearchIntake
 
 
 INLINE_RE = re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+)\)|\*\*([^*]+)\*\*|`([^`]+)`")
@@ -232,18 +232,30 @@ class NotionClient:
     def enabled(self) -> bool:
         return bool(self.api_key and self.prompts_database_id and self.responses_database_id)
 
-    async def save_prompt(self, run_id: str, intake: ResearchIntake) -> str | None:
+    async def save_prompt(
+        self,
+        run_id: str,
+        intake: ResearchIntake,
+        memory_context: MemoryContext | None = None,
+    ) -> str | None:
         if not self.enabled:
             return None
         title = clean_notion_title("Prompt: ", intake.niche_research_topic)
-        body = intake.model_dump_json(by_alias=True, indent=2)
+        body = _notion_run_metadata(run_id, memory_context) + "\n\n" + intake.model_dump_json(by_alias=True, indent=2)
         return await self._create_page(self.prompts_database_id, title, body)
 
-    async def save_response(self, run_id: str, intake: ResearchIntake, markdown: str) -> str | None:
+    async def save_response(
+        self,
+        run_id: str,
+        intake: ResearchIntake,
+        markdown: str,
+        memory_context: MemoryContext | None = None,
+    ) -> str | None:
         if not self.enabled:
             return None
         title = clean_notion_title("Response: ", intake.niche_research_topic)
-        return await self._create_page(self.responses_database_id, title, markdown)
+        body = markdown.rstrip() + "\n\n# Run metadata\n\n" + _notion_run_metadata(run_id, memory_context)
+        return await self._create_page(self.responses_database_id, title, body)
 
     async def _create_page(self, database_id: str | None, title: str, markdown: str) -> str | None:
         if not database_id or not self.api_key:
@@ -284,3 +296,18 @@ class NotionClient:
                     )
                     append_response.raise_for_status()
             return data.get("url") or page_id
+
+
+def _notion_run_metadata(run_id: str, memory_context: MemoryContext | None) -> str:
+    if not memory_context:
+        return f"Run ID: {run_id}\nMemory context: not loaded yet."
+    return "\n".join(
+        [
+            f"Run ID: {run_id}",
+            f"Workflow version: {memory_context.workflow_version}",
+            f"Instruction version: {memory_context.instruction_version}",
+            f"Source policy version: {memory_context.source_policy_version}",
+            f"Notion formatting version: {memory_context.notion_formatting_version}",
+            f"Learning output version: {memory_context.learning_output_version}",
+        ]
+    )

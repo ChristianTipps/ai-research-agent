@@ -9,6 +9,7 @@ from typing import Any, Protocol
 
 from .schemas import (
     ArtifactRecord,
+    EvaluationResult,
     FeedbackCreate,
     ProposedUpdate,
     ResearchIntake,
@@ -18,6 +19,7 @@ from .schemas import (
     SourceRecord,
     TrustReport,
     UpdateCategory,
+    UpdateApplicationRecord,
     UpdateStatus,
     WorkflowPhase,
     WorkflowVersion,
@@ -75,6 +77,20 @@ class RunRepository(Protocol):
     ) -> WorkflowVersion: ...
     def list_workflow_versions(self) -> list[WorkflowVersion]: ...
     def list_approved_runtime_updates(self) -> list[ProposedUpdate]: ...
+    def create_update_application(
+        self,
+        *,
+        update_id: str,
+        category: UpdateCategory,
+        status: str,
+        summary: str,
+        memory_key: str | None = None,
+        artifact_key: str | None = None,
+        workflow_version: str | None = None,
+    ) -> UpdateApplicationRecord: ...
+    def list_update_applications(self) -> list[UpdateApplicationRecord]: ...
+    def save_evaluation_results(self, results: list[EvaluationResult]) -> None: ...
+    def list_evaluation_results(self) -> list[EvaluationResult]: ...
 
 
 def _iso_now() -> str:
@@ -214,6 +230,28 @@ class LocalSQLiteRunRepository:
                   status text not null,
                   created_at text not null,
                   updated_at text not null
+                );
+                create table if not exists update_applications (
+                  id text primary key,
+                  update_id text not null,
+                  category text not null,
+                  status text not null,
+                  summary text not null,
+                  memory_key text,
+                  artifact_key text,
+                  workflow_version text,
+                  created_at text not null
+                );
+                create table if not exists evaluation_results (
+                  id text primary key,
+                  case_id text not null,
+                  status text not null,
+                  score real not null,
+                  summary text not null,
+                  run_id text,
+                  evidence text not null,
+                  artifact_key text,
+                  created_at text not null
                 );
                 """
             )
@@ -533,6 +571,66 @@ class LocalSQLiteRunRepository:
             ).fetchall()
         return [self._row_to_update(row) for row in rows]
 
+    def create_update_application(
+        self,
+        *,
+        update_id: str,
+        category: UpdateCategory,
+        status: str,
+        summary: str,
+        memory_key: str | None = None,
+        artifact_key: str | None = None,
+        workflow_version: str | None = None,
+    ) -> UpdateApplicationRecord:
+        application_id = _new_id("app")
+        now = _iso_now()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                insert into update_applications (
+                  id, update_id, category, status, summary, memory_key, artifact_key, workflow_version, created_at
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (application_id, update_id, category, status, summary, memory_key, artifact_key, workflow_version, now),
+            )
+        return self._get_update_application(application_id)
+
+    def list_update_applications(self) -> list[UpdateApplicationRecord]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "select * from update_applications order by created_at desc limit 100"
+            ).fetchall()
+        return [self._row_to_update_application(row) for row in rows]
+
+    def save_evaluation_results(self, results: list[EvaluationResult]) -> None:
+        with self._connect() as conn:
+            for result in results:
+                conn.execute(
+                    """
+                    insert or replace into evaluation_results (
+                      id, case_id, status, score, summary, run_id, evidence, artifact_key, created_at
+                    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        result.id,
+                        result.case_id,
+                        result.status,
+                        result.score,
+                        result.summary,
+                        result.run_id,
+                        json.dumps(result.evidence),
+                        result.artifact_key,
+                        result.created_at.isoformat(),
+                    ),
+                )
+
+    def list_evaluation_results(self) -> list[EvaluationResult]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "select * from evaluation_results order by created_at desc limit 100"
+            ).fetchall()
+        return [self._row_to_evaluation_result(row) for row in rows]
+
     def _get_proposed_update(self, update_id: str) -> ProposedUpdate:
         with self._connect() as conn:
             row = conn.execute("select * from proposed_updates where id = ?", (update_id,)).fetchone()
@@ -546,6 +644,13 @@ class LocalSQLiteRunRepository:
         if row is None:
             raise KeyError(version_id)
         return self._row_to_workflow_version(row)
+
+    def _get_update_application(self, application_id: str) -> UpdateApplicationRecord:
+        with self._connect() as conn:
+            row = conn.execute("select * from update_applications where id = ?", (application_id,)).fetchone()
+        if row is None:
+            raise KeyError(application_id)
+        return self._row_to_update_application(row)
 
     def _row_to_run(self, row: sqlite3.Row) -> RunRecord:
         data = dict(row)
@@ -588,6 +693,34 @@ class LocalSQLiteRunRepository:
             sourcePolicy=data["source_policy"],
             createdAt=_dt(data["created_at"]),
             approvedAt=_dt(data["approved_at"]) if data["approved_at"] else None,
+        )
+
+    def _row_to_update_application(self, row: sqlite3.Row) -> UpdateApplicationRecord:
+        data = dict(row)
+        return UpdateApplicationRecord(
+            id=data["id"],
+            updateId=data["update_id"],
+            category=data["category"],
+            status=data["status"],
+            summary=data["summary"],
+            memoryKey=data["memory_key"],
+            artifactKey=data["artifact_key"],
+            workflowVersion=data["workflow_version"],
+            createdAt=_dt(data["created_at"]),
+        )
+
+    def _row_to_evaluation_result(self, row: sqlite3.Row) -> EvaluationResult:
+        data = dict(row)
+        return EvaluationResult(
+            id=data["id"],
+            caseId=data["case_id"],
+            status=data["status"],
+            score=float(data["score"]),
+            summary=data["summary"],
+            runId=data["run_id"],
+            evidence=json.loads(data["evidence"]),
+            artifactKey=data["artifact_key"],
+            createdAt=_dt(data["created_at"]),
         )
 
 
@@ -706,6 +839,28 @@ class PostgresRunRepository:
                   status text not null,
                   created_at timestamptz not null default now(),
                   updated_at timestamptz not null default now()
+                );
+                create table if not exists update_applications (
+                  id text primary key,
+                  update_id text not null,
+                  category text not null,
+                  status text not null,
+                  summary text not null,
+                  memory_key text,
+                  artifact_key text,
+                  workflow_version text,
+                  created_at timestamptz not null default now()
+                );
+                create table if not exists evaluation_results (
+                  id text primary key,
+                  case_id text not null,
+                  status text not null,
+                  score double precision not null,
+                  summary text not null,
+                  run_id text,
+                  evidence jsonb not null default '[]'::jsonb,
+                  artifact_key text,
+                  created_at timestamptz not null default now()
                 );
                 insert into workflow_versions (
                   id, version, status, notes, instruction_summary, source_policy, approved_at
@@ -1003,6 +1158,73 @@ class PostgresRunRepository:
             ).fetchall()
         return [self._row_to_update(row) for row in rows]
 
+    def create_update_application(
+        self,
+        *,
+        update_id: str,
+        category: UpdateCategory,
+        status: str,
+        summary: str,
+        memory_key: str | None = None,
+        artifact_key: str | None = None,
+        workflow_version: str | None = None,
+    ) -> UpdateApplicationRecord:
+        application_id = _new_id("app")
+        with self._connect() as conn:
+            conn.execute(
+                """
+                insert into update_applications (
+                  id, update_id, category, status, summary, memory_key, artifact_key, workflow_version
+                ) values (%s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (application_id, update_id, category, status, summary, memory_key, artifact_key, workflow_version),
+            )
+        return self._get_update_application(application_id)
+
+    def list_update_applications(self) -> list[UpdateApplicationRecord]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "select * from update_applications order by created_at desc limit 100"
+            ).fetchall()
+        return [self._row_to_update_application(row) for row in rows]
+
+    def save_evaluation_results(self, results: list[EvaluationResult]) -> None:
+        with self._connect() as conn:
+            for result in results:
+                conn.execute(
+                    """
+                    insert into evaluation_results (
+                      id, case_id, status, score, summary, run_id, evidence, artifact_key, created_at
+                    ) values (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    on conflict (id) do update set
+                      case_id = excluded.case_id,
+                      status = excluded.status,
+                      score = excluded.score,
+                      summary = excluded.summary,
+                      run_id = excluded.run_id,
+                      evidence = excluded.evidence,
+                      artifact_key = excluded.artifact_key
+                    """,
+                    (
+                        result.id,
+                        result.case_id,
+                        result.status,
+                        result.score,
+                        result.summary,
+                        result.run_id,
+                        self.Jsonb(result.evidence),
+                        result.artifact_key,
+                        result.created_at,
+                    ),
+                )
+
+    def list_evaluation_results(self) -> list[EvaluationResult]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "select * from evaluation_results order by created_at desc limit 100"
+            ).fetchall()
+        return [self._row_to_evaluation_result(row) for row in rows]
+
     def _get_proposed_update(self, update_id: str) -> ProposedUpdate:
         with self._connect() as conn:
             row = conn.execute("select * from proposed_updates where id = %s", (update_id,)).fetchone()
@@ -1016,6 +1238,13 @@ class PostgresRunRepository:
         if row is None:
             raise KeyError(version_id)
         return self._row_to_workflow_version(row)
+
+    def _get_update_application(self, application_id: str) -> UpdateApplicationRecord:
+        with self._connect() as conn:
+            row = conn.execute("select * from update_applications where id = %s", (application_id,)).fetchone()
+        if row is None:
+            raise KeyError(application_id)
+        return self._row_to_update_application(row)
 
     def _row_to_run(self, row: dict[str, Any]) -> RunRecord:
         return RunRecord(
@@ -1055,6 +1284,32 @@ class PostgresRunRepository:
             sourcePolicy=row["source_policy"],
             createdAt=row["created_at"],
             approvedAt=row["approved_at"],
+        )
+
+    def _row_to_update_application(self, row: dict[str, Any]) -> UpdateApplicationRecord:
+        return UpdateApplicationRecord(
+            id=row["id"],
+            updateId=row["update_id"],
+            category=row["category"],
+            status=row["status"],
+            summary=row["summary"],
+            memoryKey=row["memory_key"],
+            artifactKey=row["artifact_key"],
+            workflowVersion=row["workflow_version"],
+            createdAt=row["created_at"],
+        )
+
+    def _row_to_evaluation_result(self, row: dict[str, Any]) -> EvaluationResult:
+        return EvaluationResult(
+            id=row["id"],
+            caseId=row["case_id"],
+            status=row["status"],
+            score=float(row["score"]),
+            summary=row["summary"],
+            runId=row["run_id"],
+            evidence=_loads(row["evidence"]),
+            artifactKey=row["artifact_key"],
+            createdAt=row["created_at"],
         )
 
 

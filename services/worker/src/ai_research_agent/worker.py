@@ -7,6 +7,7 @@ from typing import Any
 from .agent import run_research_agent
 from .config import Settings
 from .formatting import prepare_final_report
+from .memory import WORKFLOW_ARTIFACT, bootstrap_memory, load_memory_context
 from .notion import NotionClient
 from .progress import complete_progress, mark_phase
 from .schemas import ArtifactRecord, ResearchIntake, RunStatus, SourceRecord, TrustReport, WorkflowPhase
@@ -76,19 +77,6 @@ async def process_research_run(run_id: str, repository: RunRepository, settings:
         )
 
         prompt_url = None
-        try:
-            prompt_url = await notion.save_prompt(run_id, run.intake)
-            if prompt_url:
-                repository.save_locations(run_id, notion_prompt_url=prompt_url)
-                repository.append_event(run_id, "notion_prompt_saved", "Prompt saved to Notion.")
-            else:
-                repository.append_event(
-                    run_id,
-                    "notion_prompt_skipped",
-                    "Prompt was not saved because Notion is not fully configured.",
-                )
-        except Exception as exc:  # noqa: BLE001
-            repository.append_event(run_id, "notion_prompt_failed", str(exc))
 
         run = await _phase(
             repository,
@@ -113,12 +101,45 @@ async def process_research_run(run_id: str, repository: RunRepository, settings:
         )
         if run is None:
             return
-        approved_context = _approved_update_context(repository)
+        approved_updates = repository.list_approved_runtime_updates()
+        bootstrap_memory(spaces)
+        memory_context = load_memory_context(
+            spaces,
+            approved_update_count=len(approved_updates),
+        )
+        active_workflow = next(
+            (version for version in repository.list_workflow_versions() if version.status == "active"),
+            None,
+        )
+        if active_workflow:
+            memory_context.workflow_version = active_workflow.version
+        approved_context = _approved_update_context(approved_updates)
+        run.progress.memory_context = memory_context
+        run.progress.workflow_version = memory_context.workflow_version
         if approved_context:
             run.progress.tool_summaries.append("Approved update notes loaded into the research prompt.")
         else:
             run.progress.tool_summaries.append("No approved update notes are active yet.")
+        run.progress.tool_summaries.append(
+            f"Operating memory loaded from {len(memory_context.documents)} instruction document(s), "
+            f"{len(memory_context.tool_configs)} tool config(s), workflow {memory_context.workflow_version}."
+        )
+        if memory_context.warnings:
+            run.progress.decision_log.extend(memory_context.warnings)
         repository.update_run(run_id, progress=run.progress)
+        try:
+            prompt_url = await notion.save_prompt(run_id, run.intake, memory_context)
+            if prompt_url:
+                repository.save_locations(run_id, notion_prompt_url=prompt_url)
+                repository.append_event(run_id, "notion_prompt_saved", "Prompt saved to Notion with memory version references.")
+            else:
+                repository.append_event(
+                    run_id,
+                    "notion_prompt_skipped",
+                    "Prompt was not saved because Notion is not fully configured.",
+                )
+        except Exception as exc:  # noqa: BLE001
+            repository.append_event(run_id, "notion_prompt_failed", str(exc))
 
         run = await _phase(
             repository,
@@ -163,6 +184,7 @@ async def process_research_run(run_id: str, repository: RunRepository, settings:
             source_strategy=strategy,
             approved_update_context=approved_context,
             seed_source_context=seed_source_context,
+            memory_context=run.progress.memory_context,
         )
 
         run = await _phase(
@@ -220,7 +242,12 @@ async def process_research_run(run_id: str, repository: RunRepository, settings:
             return
         response_url = None
         try:
-            response_url = await notion.save_response(run_id, run.intake, agent_markdown)
+            response_url = await notion.save_response(
+                run_id,
+                run.intake,
+                agent_markdown,
+                run.progress.memory_context,
+            )
             if response_url:
                 repository.save_locations(run_id, notion_response_url=response_url)
                 repository.append_event(run_id, "notion_response_saved", "Response saved to Notion.")
@@ -433,8 +460,7 @@ def _save_spaces_artifacts(
     if spaces.save_json(
         workflow_key,
         {
-            "version": "research-workflow-v1",
-            "description": "Staged research workflow with source strategy, source review, trust report, and authorized updates.",
+            **WORKFLOW_ARTIFACT.model_dump(by_alias=True, mode="json"),
         },
     ):
         saved_artifacts.append(
@@ -598,8 +624,7 @@ def _fill_missing_source_fields(target: SourceRecord, incoming: SourceRecord) ->
     target.notes = _append_note(target.notes, incoming.notes) if incoming.notes else target.notes
 
 
-def _approved_update_context(repository: RunRepository) -> str:
-    updates = repository.list_approved_runtime_updates()
+def _approved_update_context(updates: list[Any]) -> str:
     if not updates:
         return ""
     lines = []

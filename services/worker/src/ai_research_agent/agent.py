@@ -4,7 +4,8 @@ import os
 import textwrap
 from typing import Any
 
-from .schemas import ResearchIntake, SourceStrategy
+from .memory import memory_context_as_prompt
+from .schemas import MemoryContext, ResearchIntake, SourceStrategy
 from .source_strategy import resolve_research_budget_minutes
 
 try:
@@ -76,6 +77,7 @@ def build_research_prompt(
     source_strategy: SourceStrategy | None = None,
     approved_update_context: str = "",
     seed_source_context: str = "",
+    memory_context: MemoryContext | None = None,
 ) -> str:
     strategy = source_strategy.model_dump(by_alias=True) if source_strategy else {}
     budget = resolve_research_budget_minutes(intake)
@@ -96,6 +98,9 @@ def build_research_prompt(
 
         Approved runtime updates:
         {approved_update_context or "- No approved update notes yet."}
+
+        Versioned operating memory:
+        {memory_context_as_prompt(memory_context)}
 
         User-provided YouTube source context:
         {seed_source_context or "- No YouTube URLs were provided by the user."}
@@ -126,7 +131,11 @@ def build_research_prompt(
     ).strip()
 
 
-def create_research_agent(model: str, enable_web_search: bool = True) -> Any:
+def create_research_agent(
+    model: str,
+    enable_web_search: bool = True,
+    memory_context: MemoryContext | None = None,
+) -> Any:
     if Agent is None:
         raise RuntimeError("openai-agents is not installed")
 
@@ -134,9 +143,13 @@ def create_research_agent(model: str, enable_web_search: bool = True) -> Any:
     if enable_web_search and WebSearchTool is not None:
         tools.append(WebSearchTool(search_context_size="medium"))
 
+    instructions = BASE_INSTRUCTIONS
+    if memory_context:
+        instructions = BASE_INSTRUCTIONS + "\n\nVersioned operating memory:\n" + memory_context_as_prompt(memory_context)
+
     return Agent(
         name="AI Research Agent",
-        instructions=BASE_INSTRUCTIONS,
+        instructions=instructions,
         model=model,
         tools=tools,
     )
@@ -149,13 +162,18 @@ async def run_research_agent(
     source_strategy: SourceStrategy | None = None,
     approved_update_context: str = "",
     seed_source_context: str = "",
+    memory_context: MemoryContext | None = None,
 ) -> str:
     if Runner is None:
         raise RuntimeError("openai-agents is not installed")
     if not os.getenv("OPENAI_API_KEY"):
         raise RuntimeError("OPENAI_API_KEY is required to run the research agent")
 
-    agent = create_research_agent(model=model, enable_web_search=enable_web_search)
+    agent = create_research_agent(
+        model=model,
+        enable_web_search=enable_web_search,
+        memory_context=memory_context,
+    )
     result = await Runner.run(
         agent,
         build_research_prompt(
@@ -163,6 +181,7 @@ async def run_research_agent(
             source_strategy=source_strategy,
             approved_update_context=approved_update_context,
             seed_source_context=seed_source_context,
+            memory_context=memory_context,
         ),
     )
     return str(result.final_output)

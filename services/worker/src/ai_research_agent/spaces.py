@@ -4,6 +4,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
+from botocore.exceptions import ClientError
 
 
 @dataclass
@@ -35,26 +36,72 @@ class SpacesClient:
         return key
 
     def save_markdown(self, key: str, markdown: str) -> str | None:
+        return self.save_text(key, markdown, "text/markdown; charset=utf-8")
+
+    def save_text(self, key: str, text: str, content_type: str = "text/plain; charset=utf-8") -> str | None:
         if not self.enabled:
             return None
-        self._put_object(key, markdown.encode("utf-8"), "text/markdown; charset=utf-8")
+        self._put_object(key, text.encode("utf-8"), content_type)
         return key
 
+    def get_text(self, key: str) -> str | None:
+        if not self.enabled:
+            return None
+        try:
+            response = self._client().get_object(Bucket=self.bucket, Key=key)
+            return response["Body"].read().decode("utf-8")
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") in {"NoSuchKey", "404", "NotFound"}:
+                return None
+            raise
+
+    def get_json(self, key: str) -> dict[str, Any] | list[Any] | None:
+        text = self.get_text(key)
+        if text is None:
+            return None
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            return None
+
+    def object_exists(self, key: str) -> bool:
+        if not self.enabled:
+            return False
+        try:
+            self._client().head_object(Bucket=self.bucket, Key=key)
+            return True
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") in {"NoSuchKey", "404", "NotFound"}:
+                return False
+            raise
+
+    def list_keys(self, prefix: str, *, limit: int = 100) -> list[str]:
+        if not self.enabled:
+            return []
+        response = self._client().list_objects_v2(
+            Bucket=self.bucket,
+            Prefix=prefix,
+            MaxKeys=limit,
+        )
+        return [item["Key"] for item in response.get("Contents", [])]
+
     def _put_object(self, key: str, body: bytes, content_type: str) -> None:
+        self._client().put_object(
+            Bucket=self.bucket,
+            Key=key,
+            Body=body,
+            ContentType=content_type,
+        )
+
+    def _client(self):
         import boto3
 
-        client = boto3.client(
+        return boto3.client(
             "s3",
             region_name=self.region,
             endpoint_url=self.endpoint,
             aws_access_key_id=self.access_key_id,
             aws_secret_access_key=self.secret_access_key,
-        )
-        client.put_object(
-            Bucket=self.bucket,
-            Key=key,
-            Body=body,
-            ContentType=content_type,
         )
 
 

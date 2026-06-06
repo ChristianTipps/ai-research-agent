@@ -1,4 +1,4 @@
-import type { ResearchIntake, RunRecord, UpdatesOverview } from "@ai-research-agent/shared";
+import type { EvalsOverview, MemoryDocument, MemoryOverview, ResearchIntake, RunRecord, UpdatesOverview } from "@ai-research-agent/shared";
 
 const backendUrl = process.env.AGENT_BACKEND_URL ?? "http://127.0.0.1:8080";
 const backendToken = process.env.AGENT_BACKEND_TOKEN;
@@ -64,6 +64,50 @@ export async function listUpdates(): Promise<UpdatesOverview> {
     cache: "no-store",
   });
   return parseResponse<UpdatesOverview>(response);
+}
+
+export async function listMemory(): Promise<MemoryOverview> {
+  const response = await fetch(`${backendUrl}/memory`, {
+    headers: headers(),
+    cache: "no-store",
+  });
+  return parseResponse<MemoryOverview>(response);
+}
+
+export async function getMemoryDocument(key: string): Promise<MemoryDocument> {
+  const response = await fetch(`${backendUrl}/memory/${encodeURI(key)}`, {
+    headers: headers(),
+    cache: "no-store",
+  });
+  return parseResponse<MemoryDocument>(response);
+}
+
+export async function bootstrapMemory(passcode?: string): Promise<MemoryOverview> {
+  const response = await fetch(`${backendUrl}/memory/bootstrap`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ passcode }),
+    cache: "no-store",
+  });
+  return parseResponse<MemoryOverview>(response);
+}
+
+export async function listEvals(): Promise<EvalsOverview> {
+  const response = await fetch(`${backendUrl}/evals`, {
+    headers: headers(),
+    cache: "no-store",
+  });
+  return parseResponse<EvalsOverview>(response);
+}
+
+export async function runEvals(payload: { runId?: string; passcode?: string }): Promise<EvalsOverview> {
+  const response = await fetch(`${backendUrl}/evals/run`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify(payload),
+    cache: "no-store",
+  });
+  return parseResponse<EvalsOverview>(response);
 }
 
 export async function runUpdateAction(updateId: string, action: "approve" | "decline", passcode?: string) {

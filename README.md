@@ -3,7 +3,7 @@
 Learning-centered research agent that uses:
 
 - Vercel and Next.js for the mobile-friendly control surface.
-- DigitalOcean for the long-running agent runtime, database, artifact storage, persistence, and future scheduling.
+- DigitalOcean for the long-running agent runtime, database, operating memory, artifact storage, persistence, and future scheduling.
 - OpenAI Agents SDK for staged research synthesis.
 - Notion for readable prompt and response records that support learning, highlighting, and explanation.
 
@@ -15,7 +15,7 @@ The app is organized around three connected systems:
 
 - **Research Engine**: normalizes intake, plans topic-aware source strategy, performs source discovery, reviews source quality, compares thesis/antithesis/synthesis, and writes the final report.
 - **Learning Workspace**: creates Notion-friendly reports with clean titles, readable sections, source links grouped at the end, and formatting that works well with Notion AI Explain.
-- **Memory/Evaluation Layer**: stores source artifacts, run summaries, trust reports, feedback, proposed update notes, approved workflow versions, and future evaluation cases in DigitalOcean.
+- **Memory/Evaluation Layer**: stores source artifacts, run summaries, trust reports, feedback, proposed update notes, approved workflow versions, operating instructions, tool configs, and evaluation evidence in DigitalOcean.
 
 ## Repository Shape
 
@@ -58,7 +58,7 @@ docs/                 Architecture, deployment, and prompt policy docs
 - Vercel should host only the UI, short API routes, status reads, and job-start handoff.
 - DigitalOcean should run the long-lived worker service and own durable state.
 - Notion stores submitted prompts and final readable responses only.
-- DigitalOcean Spaces stores final reports, source artifacts, best-effort YouTube transcript artifacts, trust reports, instruction files, run summaries, source snapshots, and workflow definitions.
+- DigitalOcean Spaces stores final reports, source artifacts, best-effort YouTube transcript artifacts, trust reports, instruction files, tool configs, eval cases/results, run summaries, source snapshots, and workflow definitions.
 - User feedback is stored as pending proposed updates. Runtime changes are applied only after an admin authorizes them on the versions/updates page.
 - Do not store hidden chain-of-thought, secrets, or raw credentials in Notion, logs, prompts, or source code.
 

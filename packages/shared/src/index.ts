@@ -65,7 +65,12 @@ export type ArtifactKind =
   | "youtube_transcript"
   | "trust_report"
   | "workflow_version"
-  | "instruction_snapshot";
+  | "instruction_snapshot"
+  | "memory_document"
+  | "tool_config"
+  | "evaluation_case"
+  | "evaluation_result"
+  | "update_application";
 
 export type UpdateCategory =
   | "instructions"
@@ -78,6 +83,19 @@ export type UpdateCategory =
   | "code_backlog";
 
 export type UpdateStatus = "pending" | "approved" | "declined";
+
+export type MemoryCategory =
+  | "instructions"
+  | "source_policy"
+  | "notion_formatting"
+  | "learning_output"
+  | "tool_config"
+  | "workflow"
+  | "evaluation"
+  | "approved_update"
+  | "backlog";
+
+export type EvaluationStatus = "pass" | "fail" | "warning";
 
 export interface ResearchIntake {
   nicheResearchTopic: string;
@@ -145,6 +163,98 @@ export interface TrustReport {
   recommendations: string[];
 }
 
+export interface MemoryDocument {
+  key: string;
+  title: string;
+  category: MemoryCategory;
+  contentType: string;
+  version: string;
+  status: "active" | "default" | "approved" | "missing";
+  summary: string;
+  content?: string;
+  updatedAt?: string;
+}
+
+export interface ToolConfigRecord {
+  key: string;
+  name: string;
+  enabled: boolean;
+  summary: string;
+  config: Record<string, unknown>;
+  version: string;
+}
+
+export interface WorkflowVersionArtifact {
+  key: string;
+  version: string;
+  status: "active" | "archived" | "proposed";
+  summary: string;
+  phases: string[];
+  artifactPolicy: string[];
+  approvalPolicy: string;
+}
+
+export interface MemoryContext {
+  workflowVersion: string;
+  instructionVersion: string;
+  sourcePolicyVersion: string;
+  notionFormattingVersion: string;
+  learningOutputVersion: string;
+  documents: MemoryDocument[];
+  toolConfigs: ToolConfigRecord[];
+  workflow?: WorkflowVersionArtifact;
+  approvedUpdateCount: number;
+  warnings: string[];
+  loadedAt: string;
+}
+
+export interface EvaluationCase {
+  id: string;
+  title: string;
+  prompt: string;
+  expectedSignals: string[];
+  forbiddenSignals: string[];
+  tags: string[];
+  active: boolean;
+}
+
+export interface EvaluationResult {
+  id: string;
+  caseId: string;
+  status: EvaluationStatus;
+  score: number;
+  summary: string;
+  runId?: string;
+  evidence: string[];
+  artifactKey?: string;
+  createdAt: string;
+}
+
+export interface UpdateApplicationRecord {
+  id: string;
+  updateId: string;
+  category: UpdateCategory;
+  status: "runtime_applied" | "backlog_recorded" | "declined";
+  summary: string;
+  memoryKey?: string;
+  artifactKey?: string;
+  workflowVersion?: string;
+  createdAt: string;
+}
+
+export interface MemoryOverview {
+  documents: MemoryDocument[];
+  toolConfigs: ToolConfigRecord[];
+  workflow?: WorkflowVersionArtifact;
+  updateApplications: UpdateApplicationRecord[];
+  warnings: string[];
+}
+
+export interface EvalsOverview {
+  cases: EvaluationCase[];
+  results: EvaluationResult[];
+}
+
 export interface ApprovalRequest {
   id: string;
   title: string;
@@ -171,6 +281,7 @@ export interface RunProgress {
     trustReportKey?: string;
   };
   workflowVersion: string;
+  memoryContext?: MemoryContext;
   proposedUpdateCount: number;
 }
 
@@ -214,6 +325,7 @@ export interface WorkflowVersion {
 export interface UpdatesOverview {
   proposedUpdates: ProposedUpdate[];
   workflowVersions: WorkflowVersion[];
+  updateApplications: UpdateApplicationRecord[];
 }
 
 export const researchBudgetDefaults: Record<DepthPreset, number> = {

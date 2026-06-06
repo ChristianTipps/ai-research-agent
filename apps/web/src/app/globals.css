@@ -747,6 +747,21 @@ a {
   margin-bottom: 14px;
 }
 
+.admin-controls {
+  display: grid;
+  gap: 12px;
+}
+
+.memory-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.metric.compact {
+  min-height: 72px;
+}
+
 .update-card {
   display: grid;
   gap: 8px;

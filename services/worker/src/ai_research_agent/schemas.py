@@ -69,6 +69,11 @@ ArtifactKind = Literal[
     "trust_report",
     "workflow_version",
     "instruction_snapshot",
+    "memory_document",
+    "tool_config",
+    "evaluation_case",
+    "evaluation_result",
+    "update_application",
 ]
 
 UpdateCategory = Literal[
@@ -83,6 +88,20 @@ UpdateCategory = Literal[
 ]
 
 UpdateStatus = Literal["pending", "approved", "declined"]
+
+MemoryCategory = Literal[
+    "instructions",
+    "source_policy",
+    "notion_formatting",
+    "learning_output",
+    "tool_config",
+    "workflow",
+    "evaluation",
+    "approved_update",
+    "backlog",
+]
+
+EvaluationStatus = Literal["pass", "fail", "warning"]
 
 
 class ResearchIntake(BaseModel):
@@ -243,6 +262,103 @@ class TrustReport(BaseModel):
     recommendations: list[str] = Field(default_factory=list)
 
 
+class MemoryDocument(BaseModel):
+    key: str
+    title: str
+    category: MemoryCategory
+    content_type: str = Field(default="text/markdown", alias="contentType")
+    version: str = "research-workflow-v1"
+    status: Literal["active", "default", "approved", "missing"] = "active"
+    summary: str
+    content: str | None = None
+    updated_at: datetime | None = Field(default=None, alias="updatedAt")
+
+
+class ToolConfigRecord(BaseModel):
+    key: str
+    name: str
+    enabled: bool = True
+    summary: str
+    config: dict[str, Any] = Field(default_factory=dict)
+    version: str = "research-workflow-v1"
+
+
+class WorkflowVersionArtifact(BaseModel):
+    key: str
+    version: str
+    status: Literal["active", "archived", "proposed"] = "active"
+    summary: str
+    phases: list[str] = Field(default_factory=list)
+    artifact_policy: list[str] = Field(default_factory=list, alias="artifactPolicy")
+    approval_policy: str = Field(default="", alias="approvalPolicy")
+
+
+class MemoryContext(BaseModel):
+    workflow_version: str = Field(default="research-workflow-v1", alias="workflowVersion")
+    instruction_version: str = Field(default="research-workflow-v1", alias="instructionVersion")
+    source_policy_version: str = Field(default="research-workflow-v1", alias="sourcePolicyVersion")
+    notion_formatting_version: str = Field(default="research-workflow-v1", alias="notionFormattingVersion")
+    learning_output_version: str = Field(default="research-workflow-v1", alias="learningOutputVersion")
+    documents: list[MemoryDocument] = Field(default_factory=list)
+    tool_configs: list[ToolConfigRecord] = Field(default_factory=list, alias="toolConfigs")
+    workflow: WorkflowVersionArtifact | None = None
+    approved_update_count: int = Field(default=0, alias="approvedUpdateCount")
+    warnings: list[str] = Field(default_factory=list)
+    loaded_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), alias="loadedAt")
+
+
+class EvaluationCase(BaseModel):
+    id: str
+    title: str
+    prompt: str
+    expected_signals: list[str] = Field(default_factory=list, alias="expectedSignals")
+    forbidden_signals: list[str] = Field(default_factory=list, alias="forbiddenSignals")
+    tags: list[str] = Field(default_factory=list)
+    active: bool = True
+
+
+class EvaluationResult(BaseModel):
+    id: str
+    case_id: str = Field(alias="caseId")
+    status: EvaluationStatus
+    score: float
+    summary: str
+    run_id: str | None = Field(default=None, alias="runId")
+    evidence: list[str] = Field(default_factory=list)
+    artifact_key: str | None = Field(default=None, alias="artifactKey")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), alias="createdAt")
+
+
+class UpdateApplicationRecord(BaseModel):
+    id: str
+    update_id: str = Field(alias="updateId")
+    category: UpdateCategory
+    status: Literal["runtime_applied", "backlog_recorded", "declined"]
+    summary: str
+    memory_key: str | None = Field(default=None, alias="memoryKey")
+    artifact_key: str | None = Field(default=None, alias="artifactKey")
+    workflow_version: str | None = Field(default=None, alias="workflowVersion")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), alias="createdAt")
+
+
+class MemoryOverview(BaseModel):
+    documents: list[MemoryDocument] = Field(default_factory=list)
+    tool_configs: list[ToolConfigRecord] = Field(default_factory=list, alias="toolConfigs")
+    workflow: WorkflowVersionArtifact | None = None
+    update_applications: list[UpdateApplicationRecord] = Field(default_factory=list, alias="updateApplications")
+    warnings: list[str] = Field(default_factory=list)
+
+
+class EvalsOverview(BaseModel):
+    cases: list[EvaluationCase] = Field(default_factory=list)
+    results: list[EvaluationResult] = Field(default_factory=list)
+
+
+class EvalRunCreate(BaseModel):
+    run_id: str | None = Field(default=None, alias="runId")
+    passcode: str | None = None
+
+
 class ApprovalRequest(BaseModel):
     id: str
     title: str
@@ -271,6 +387,7 @@ class RunProgress(BaseModel):
     approval_requests: list[ApprovalRequest] = Field(default_factory=list, alias="approvalRequests")
     saved_locations: SavedLocations = Field(default_factory=SavedLocations, alias="savedLocations")
     workflow_version: str = Field(default="research-workflow-v1", alias="workflowVersion")
+    memory_context: MemoryContext | None = Field(default=None, alias="memoryContext")
     proposed_update_count: int = Field(default=0, alias="proposedUpdateCount")
 
 
@@ -321,6 +438,7 @@ class WorkflowVersion(BaseModel):
 class UpdatesOverview(BaseModel):
     proposed_updates: list[ProposedUpdate] = Field(alias="proposedUpdates")
     workflow_versions: list[WorkflowVersion] = Field(alias="workflowVersions")
+    update_applications: list[UpdateApplicationRecord] = Field(default_factory=list, alias="updateApplications")
 
 
 class UpdateActionCreate(BaseModel):
@@ -329,7 +447,7 @@ class UpdateActionCreate(BaseModel):
 
 class ActionResponse(BaseModel):
     run_id: str | None = Field(default=None, alias="runId")
-    status: RunStatus | UpdateStatus
+    status: RunStatus | UpdateStatus | str
     message: str
 
 

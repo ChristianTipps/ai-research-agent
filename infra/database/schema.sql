@@ -103,3 +103,27 @@ create table if not exists user_preferences (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+create table if not exists update_applications (
+  id text primary key,
+  update_id text not null,
+  category text not null,
+  status text not null,
+  summary text not null,
+  memory_key text,
+  artifact_key text,
+  workflow_version text,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists evaluation_results (
+  id text primary key,
+  case_id text not null,
+  status text not null,
+  score double precision not null,
+  summary text not null,
+  run_id text,
+  evidence jsonb not null default '[]'::jsonb,
+  artifact_key text,
+  created_at timestamptz not null default now()
+);
