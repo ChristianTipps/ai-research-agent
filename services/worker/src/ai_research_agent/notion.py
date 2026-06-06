@@ -11,6 +11,20 @@ from .schemas import ResearchIntake
 INLINE_RE = re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+)\)|\*\*([^*]+)\*\*|`([^`]+)`")
 MAX_RICH_TEXT_CHARS = 1800
 MAX_CHILDREN_PER_REQUEST = 90
+CODE_LANGS = {
+    "bash",
+    "css",
+    "html",
+    "javascript",
+    "js",
+    "json",
+    "jsx",
+    "python",
+    "sql",
+    "ts",
+    "tsx",
+    "typescript",
+}
 
 
 def _plain_text_chunks(text: str) -> list[dict]:
@@ -86,12 +100,12 @@ def _text_block(block_type: str, text: str) -> dict:
     }
 
 
-def _code_blocks(text: str) -> list[dict]:
+def _code_blocks(text: str, language: str = "plain text") -> list[dict]:
     return [
         {
             "object": "block",
             "type": "code",
-            "code": {"rich_text": _plain_text_chunks(chunk), "language": "plain text"},
+            "code": {"rich_text": _plain_text_chunks(chunk), "language": language},
         }
         for chunk in _split_text(text)
     ] or [_text_block("paragraph", " ")]
@@ -102,6 +116,7 @@ def _markdown_blocks(markdown: str) -> list[dict]:
     paragraph_lines: list[str] = []
     code_lines: list[str] = []
     in_code = False
+    code_lang = ""
 
     def flush_paragraph() -> None:
         if not paragraph_lines:
@@ -112,18 +127,25 @@ def _markdown_blocks(markdown: str) -> list[dict]:
     def flush_code() -> None:
         if not code_lines:
             return
-        blocks.extend(_code_blocks("\n".join(code_lines).rstrip()))
+        code_text = "\n".join(code_lines).rstrip()
+        if _looks_like_code(code_text, code_lang):
+            blocks.extend(_code_blocks(code_text, _notion_code_language(code_lang)))
+        else:
+            blocks.append(_text_block("paragraph", _plainify_diagram(code_text)))
         code_lines.clear()
 
     for line in markdown.splitlines():
         stripped = line.strip()
-        if stripped.startswith("```"):
+        fence = re.match(r"^```([A-Za-z0-9_-]+)?", stripped)
+        if fence:
             if in_code:
                 flush_code()
                 in_code = False
+                code_lang = ""
             else:
                 flush_paragraph()
                 in_code = True
+                code_lang = fence.group(1) or ""
             continue
         if in_code:
             code_lines.append(line)
@@ -139,16 +161,16 @@ def _markdown_blocks(markdown: str) -> list[dict]:
             blocks.append(_text_block(block_type, heading.group(2)))
             continue
 
-        bullet = re.match(r"^[-*]\s+(.+)$", stripped)
+        bullet = re.match(r"^\s*[-*]\s+(.+)$", line)
         if bullet:
             flush_paragraph()
-            blocks.append(_text_block("bulleted_list_item", bullet.group(1)))
+            blocks.append(_text_block("bulleted_list_item", _clean_list_text(bullet.group(1))))
             continue
 
-        numbered = re.match(r"^\d+\.\s+(.+)$", stripped)
+        numbered = re.match(r"^\s*\d+\.\s+(.+)$", line)
         if numbered:
             flush_paragraph()
-            blocks.append(_text_block("numbered_list_item", numbered.group(1)))
+            blocks.append(_text_block("numbered_list_item", _clean_list_text(numbered.group(1))))
             continue
 
         paragraph_lines.append(stripped)
@@ -157,6 +179,47 @@ def _markdown_blocks(markdown: str) -> list[dict]:
         flush_code()
     flush_paragraph()
     return blocks or [_text_block("paragraph", "No content.")]
+
+
+def clean_notion_title(prefix: str, topic: str, max_length: int = 90) -> str:
+    title = re.sub(r"\s+", " ", topic).strip(" -_\t\n")
+    title = re.sub(r"\brun_[A-Za-z0-9_,-]+\b", "", title).strip(" -_,")
+    title = title[:max_length].rstrip(" -_,")
+    if not title:
+        title = "Research run"
+    return f"{prefix}{title}"[:100].rstrip(" -_,")
+
+
+def _clean_list_text(text: str) -> str:
+    cleaned = text.strip()
+    while re.match(r"^\d+\.\s+", cleaned):
+        cleaned = re.sub(r"^\d+\.\s+", "", cleaned, count=1)
+    return cleaned or text.strip()
+
+
+def _looks_like_code(text: str, language: str) -> bool:
+    if language.lower() in {"text", "plain", "plaintext"}:
+        return False
+    if language.lower() in CODE_LANGS:
+        return True
+    code_markers = ["const ", "let ", "function ", "=>", "import ", "def ", "{", "}", "</", "SELECT "]
+    return any(marker in text for marker in code_markers)
+
+
+def _notion_code_language(language: str) -> str:
+    lower = language.lower()
+    if lower in {"js", "jsx"}:
+        return "javascript"
+    if lower in {"ts", "tsx"}:
+        return "typescript"
+    if lower in CODE_LANGS:
+        return "plain text" if lower == "text" else lower
+    return "plain text"
+
+
+def _plainify_diagram(text: str) -> str:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return "\n".join(lines)
 
 
 @dataclass
@@ -172,14 +235,14 @@ class NotionClient:
     async def save_prompt(self, run_id: str, intake: ResearchIntake) -> str | None:
         if not self.enabled:
             return None
-        title = f"{intake.niche_research_topic[:80]} - {run_id}"
+        title = clean_notion_title("Prompt: ", intake.niche_research_topic)
         body = intake.model_dump_json(by_alias=True, indent=2)
         return await self._create_page(self.prompts_database_id, title, body)
 
     async def save_response(self, run_id: str, intake: ResearchIntake, markdown: str) -> str | None:
         if not self.enabled:
             return None
-        title = f"Response: {intake.niche_research_topic[:70]} - {run_id}"
+        title = clean_notion_title("Response: ", intake.niche_research_topic)
         return await self._create_page(self.responses_database_id, title, markdown)
 
     async def _create_page(self, database_id: str | None, title: str, markdown: str) -> str | None:

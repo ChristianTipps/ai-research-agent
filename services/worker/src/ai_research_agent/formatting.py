@@ -60,10 +60,19 @@ def _build_source_section(sources: list[SourceRecord]) -> str:
         for source in _dedupe_sources(sources):
             label = source.title.strip() or source.url or "Source"
             label = _clean_source_label(label)
+            details = [f"{source.source_type.replace('_', ' ')} source", f"{source.confidence} confidence"]
+            if source.transcript_status != "not_applicable":
+                details.append(source.transcript_status.replace("_", " "))
+            if source.confidence_reason:
+                details.append(source.confidence_reason.rstrip("."))
             if source.url:
-                section.append(f"- [{label}]({strip_tracking_params(source.url)}) — {source.confidence} confidence")
+                section.append(f"- [{label}]({strip_tracking_params(source.url)}) — {'; '.join(details)}")
             else:
-                section.append(f"- {label} — {source.confidence} confidence")
+                section.append(f"- {label} — {'; '.join(details)}")
+            if source.relevance:
+                section.append(f"  - Relevance: {source.relevance}")
+            if source.notes:
+                section.append(f"  - Notes: {source.notes}")
     section.extend(
         [
             "",

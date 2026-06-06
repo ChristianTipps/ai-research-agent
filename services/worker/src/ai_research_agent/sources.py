@@ -5,6 +5,7 @@ import uuid
 
 from .formatting import strip_tracking_params
 from .schemas import SourceRecord
+from .source_strategy import classify_source_type, review_source_record
 
 
 URL_RE = re.compile(r"https?://[^\s)\]]+")
@@ -19,20 +20,34 @@ def extract_sources(markdown: str) -> list[SourceRecord]:
             if normalized in seen:
                 continue
             seen.add(normalized)
-            title = line.strip("- *#0123456789. ").strip()[:140] or normalized
-            confidence = "medium"
+            title = _source_title(line, normalized)
             lower = line.lower()
-            if "official" in lower or "primary" in lower or "docs" in lower:
+            confidence = "medium"
+            confidence_reason = "Extracted from final research response."
+            if any(term in lower for term in ["official", "primary", "docs", "documentation"]):
                 confidence = "high"
-            elif "rumor" in lower or "reddit" in lower or "unconfirmed" in lower:
+                confidence_reason = "The response labeled this as official, primary, or documentation."
+            elif any(term in lower for term in ["rumor", "unconfirmed", "anecdote"]):
                 confidence = "low"
-            records.append(
-                SourceRecord(
-                    id=f"src_{uuid.uuid4().hex[:10]}",
-                    title=title,
-                    url=normalized,
-                    confidence=confidence,  # type: ignore[arg-type]
-                    notes="Extracted from final research response.",
-                )
+                confidence_reason = "The response labeled this as weak, unconfirmed, or anecdotal."
+            record = SourceRecord(
+                id=f"src_{uuid.uuid4().hex[:10]}",
+                title=title,
+                url=normalized,
+                sourceType=classify_source_type(normalized, title),
+                confidence=confidence,  # type: ignore[arg-type]
+                confidenceReason=confidence_reason,
+                transcriptStatus="not_attempted"
+                if classify_source_type(normalized, title) == "youtube"
+                else "not_applicable",
+                notes="Extracted from final research response.",
             )
+            records.append(review_source_record(record))
     return records
+
+
+def _source_title(line: str, url: str) -> str:
+    without_url = line.replace(url, "")
+    without_markdown = re.sub(r"\[([^\]]+)\]\(\s*\)", r"\1", without_url)
+    title = without_markdown.strip("- *#0123456789. —:").strip()
+    return title[:140] or url

@@ -52,3 +52,6 @@ services:
       - key: AGENT_BACKEND_TOKEN
         scope: RUN_TIME
         type: SECRET
+      - key: ADMIN_UPDATE_PASSCODE
+        scope: RUN_TIME
+        type: SECRET

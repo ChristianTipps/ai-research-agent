@@ -2,6 +2,7 @@
 
 import {
   depthPresets,
+  researchBudgetDefaults,
   requiredFields,
   skillLevels,
   type DepthPreset,
@@ -13,6 +14,7 @@ import {
 import {
   Activity,
   Ban,
+  BookOpen,
   CircleCheck,
   ClipboardList,
   Database,
@@ -24,6 +26,7 @@ import {
   SearchCheck,
   Send,
   ShieldCheck,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { StatusPill } from "./status-pill";
@@ -36,6 +39,7 @@ const emptyIntake: ResearchIntake = {
   customDepth: "",
   currentSkillLevel: "Working knowledge",
   deadline: "",
+  researchBudgetMinutes: researchBudgetDefaults["Standard brief"],
   outputType: "report",
 };
 
@@ -48,6 +52,7 @@ export function ResearchWorkspace() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
+  const [reportExpanded, setReportExpanded] = useState(false);
 
   const missingFields = useMemo(() => {
     return requiredFields.filter((field) => !String(intake[field.key] ?? "").trim());
@@ -95,6 +100,14 @@ export function ResearchWorkspace() {
     setIntake((current) => ({ ...current, [key]: value }));
   }
 
+  function updateDepth(depth: DepthPreset) {
+    setIntake((current) => ({
+      ...current,
+      depth,
+      researchBudgetMinutes: researchBudgetDefaults[depth],
+    }));
+  }
+
   async function submitRun() {
     if (!isValid) return;
     setBusy(true);
@@ -103,7 +116,10 @@ export function ResearchWorkspace() {
       const response = await fetch("/api/research", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(intake),
+        body: JSON.stringify({
+          ...intake,
+          researchBudgetMinutes: intake.researchBudgetMinutes ?? researchBudgetDefaults[intake.depth],
+        }),
       });
       if (!response.ok) throw new Error(await response.text());
       const created = (await response.json()) as RunRecord;
@@ -169,6 +185,9 @@ export function ResearchWorkspace() {
             </div>
           </div>
           <div className="topbar-status">
+            <a className="button" href="/updates">
+              Updates
+            </a>
             <span className={`badge ${isValid ? "ready" : "idle"}`}>
               {isValid ? "ready" : `${completionDone}/${completionTotal}`}
             </span>
@@ -228,7 +247,7 @@ export function ResearchWorkspace() {
                     <Field label="Research depth">
                       <select
                         value={intake.depth}
-                        onChange={(event) => updateField("depth", event.target.value as DepthPreset)}
+                        onChange={(event) => updateDepth(event.target.value as DepthPreset)}
                       >
                         {depthPresets.map((depth) => (
                           <option key={depth}>{depth}</option>
@@ -258,13 +277,27 @@ export function ResearchWorkspace() {
                     </Field>
                   ) : null}
 
-                  <Field label="Deadline or urgency">
-                    <input
-                      value={intake.deadline}
-                      onChange={(event) => updateField("deadline", event.target.value)}
-                      placeholder="Today, this week, no rush"
-                    />
-                  </Field>
+                  <div className="field-row">
+                    <Field label="Deadline or urgency">
+                      <input
+                        value={intake.deadline}
+                        onChange={(event) => updateField("deadline", event.target.value)}
+                        placeholder="Today, this week, no rush"
+                      />
+                    </Field>
+
+                    <Field label="Research budget">
+                      <input
+                        min={1}
+                        max={60}
+                        type="number"
+                        value={intake.researchBudgetMinutes ?? researchBudgetDefaults[intake.depth]}
+                        onChange={(event) =>
+                          updateField("researchBudgetMinutes", Number(event.target.value) || researchBudgetDefaults[intake.depth])
+                        }
+                      />
+                    </Field>
+                  </div>
 
                   <div className={`form-note ${isValid ? "success" : ""}`}>
                     {isValid ? "Ready to start" : `Needs ${missingLabels.join(", ")}`}
@@ -315,6 +348,7 @@ export function ResearchWorkspace() {
                 <div className="status-grid">
                   <Metric icon={<Activity size={16} aria-hidden />} label="Phase" value={formatLabel(run.phase)} />
                   <Metric icon={<FileText size={16} aria-hidden />} label="Depth" value={run.requestedDepth} />
+                  <Metric icon={<SlidersHorizontal size={16} aria-hidden />} label="Budget" value={`${run.intake.researchBudgetMinutes ?? researchBudgetDefaults[run.intake.depth]} min`} />
                   <Metric icon={<Database size={16} aria-hidden />} label="Updated" value={formatDate(run.updatedAt)} />
                   <Metric icon={<ShieldCheck size={16} aria-hidden />} label="Run ID" value={run.id} />
                 </div>
@@ -326,6 +360,12 @@ export function ResearchWorkspace() {
                       <StatusPill status={run.status} />
                     </div>
                     <div className="panel-body timeline">
+                      <div className="phase-progress">
+                        <div className="phase-progress-bar" aria-hidden>
+                          <span style={{ width: `${run.progress.progressPercent}%` }} />
+                        </div>
+                        <p>{run.progress.phaseMessage}</p>
+                      </div>
                       {run.progress.timeline.map((step) => (
                         <div className="timeline-row" key={step.key}>
                           <span className={`dot ${step.status}`} />
@@ -341,10 +381,12 @@ export function ResearchWorkspace() {
                       <h2>Saved Locations</h2>
                       <Database aria-hidden size={18} />
                     </div>
-                    <div className="panel-body list">
+                    <div className="panel-body saved-actions">
                       <SavedLocation label="Notion prompt" value={run.progress.savedLocations.notionPromptUrl} />
                       <SavedLocation label="Notion response" value={run.progress.savedLocations.notionResponseUrl} />
                       <SavedLocation label="Spaces summary" value={run.progress.savedLocations.spacesSummaryKey} />
+                      <SavedLocation label="Final report" value={run.progress.savedLocations.finalReportKey} />
+                      <SavedLocation label="Trust report" value={run.progress.savedLocations.trustReportKey} />
                     </div>
                   </div>
                 </div>
@@ -369,7 +411,15 @@ export function ResearchWorkspace() {
                   </div>
                   <div className="panel-body">
                     {run.resultMarkdown ? (
-                      <MarkdownReport markdown={run.resultMarkdown} />
+                      <>
+                        <div className="button-row report-actions">
+                          <button className="button" type="button" onClick={() => setReportExpanded((value) => !value)}>
+                            <BookOpen size={16} aria-hidden />
+                            {reportExpanded ? "Preview" : "View full"}
+                          </button>
+                        </div>
+                        <MarkdownReport markdown={reportExpanded ? run.resultMarkdown : previewMarkdown(run.resultMarkdown)} />
+                      </>
                     ) : (
                       <div className="empty">No final response yet.</div>
                     )}
@@ -382,7 +432,7 @@ export function ResearchWorkspace() {
                   </div>
                   <div className="panel-body feedback-grid">
                     <div className="field">
-                      <label htmlFor="feedback">Was this too basic, too advanced, or about right?</label>
+                      <label htmlFor="feedback">Feedback becomes a pending update note until you approve it.</label>
                       <textarea
                         id="feedback"
                         value={feedback}
@@ -432,6 +482,10 @@ function Metric({ icon, label, value }: { icon: ReactNode; label: string; value:
 }
 
 function SourcePanel({ sources }: { sources: SourceRecord[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const visibleSources = expanded ? sources : sources.slice(0, 4);
+  const grouped = groupSources(visibleSources);
+
   return (
     <div className="panel">
       <div className="panel-header split">
@@ -440,20 +494,43 @@ function SourcePanel({ sources }: { sources: SourceRecord[] }) {
       </div>
       <div className="panel-body list">
         {sources.length ? (
-          sources.map((source) => (
-            <div className="list-item source-item" key={source.id}>
-              <div>
-                <strong>{source.title}</strong>
-                <span className={`badge confidence-${source.confidence}`}>{source.confidence} confidence</span>
+          <>
+            {Object.entries(grouped).map(([sourceType, records]) => (
+              <div className="source-group" key={sourceType}>
+                <div className="source-group-title">
+                  <span>{formatLabel(sourceType)}</span>
+                  <span className="badge idle">{records.length}</span>
+                </div>
+                {records.map((source) => (
+                  <div className="list-item source-item" key={source.id}>
+                    <div>
+                      <strong>{source.title}</strong>
+                      <span className={`badge confidence-${source.confidence}`}>{source.confidence} confidence</span>
+                    </div>
+                    <div className="source-meta">
+                      {source.channelName ? <span>{source.channelName}</span> : null}
+                      {source.transcriptStatus !== "not_applicable" ? (
+                        <span>{formatLabel(source.transcriptStatus)}</span>
+                      ) : null}
+                      {source.publishedDate ? <span>{source.publishedDate}</span> : null}
+                    </div>
+                    {source.url ? (
+                      <a href={source.url} target="_blank" rel="noreferrer">
+                        Open <ExternalLink size={13} aria-hidden />
+                      </a>
+                    ) : null}
+                    {source.confidenceReason ? <p>{source.confidenceReason}</p> : null}
+                    {source.notes ? <p>{source.notes}</p> : null}
+                  </div>
+                ))}
               </div>
-              {source.url ? (
-                <a href={source.url} target="_blank" rel="noreferrer">
-                  Open <ExternalLink size={13} aria-hidden />
-                </a>
-              ) : null}
-              {source.notes ? <p>{source.notes}</p> : null}
-            </div>
-          ))
+            ))}
+            {sources.length > 4 ? (
+              <button className="button" type="button" onClick={() => setExpanded((value) => !value)}>
+                {expanded ? "Show fewer" : `View all ${sources.length}`}
+              </button>
+            ) : null}
+          </>
         ) : (
           <div className="empty">No records yet.</div>
         )}
@@ -485,7 +562,7 @@ function PanelList({ title, items }: { title: string; items: string[] }) {
 
 function SavedLocation({ label, value }: { label: string; value?: string }) {
   return (
-    <div className="list-item">
+    <div className="saved-location-button">
       <strong>{label}</strong>
       {value ? (
         value.startsWith("http") ? (
@@ -500,6 +577,21 @@ function SavedLocation({ label, value }: { label: string; value?: string }) {
       )}
     </div>
   );
+}
+
+function groupSources(sources: SourceRecord[]) {
+  return sources.reduce<Record<string, SourceRecord[]>>((groups, source) => {
+    const key = source.sourceType || "web";
+    groups[key] = groups[key] ? [...groups[key], source] : [source];
+    return groups;
+  }, {});
+}
+
+function previewMarkdown(markdown: string) {
+  if (markdown.length <= 2600) return markdown;
+  const preview = markdown.slice(0, 2600);
+  const lastBreak = preview.lastIndexOf("\n\n");
+  return `${preview.slice(0, lastBreak > 1200 ? lastBreak : preview.length)}\n\n_View full report to continue._`;
 }
 
 function MarkdownReport({ markdown }: { markdown: string }) {

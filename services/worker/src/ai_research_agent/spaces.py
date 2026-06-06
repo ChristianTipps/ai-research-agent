@@ -19,12 +19,30 @@ class SpacesClient:
         return bool(self.bucket and self.access_key_id and self.secret_access_key)
 
     def save_run_summary(self, run_id: str, summary: dict[str, Any]) -> str | None:
+        return self.save_json(
+            _dated_key("run-summaries", run_id, "summary", "json"),
+            summary,
+        )
+
+    def save_json(self, key: str, payload: dict[str, Any] | list[Any]) -> str | None:
         if not self.enabled:
             return None
+        self._put_object(
+            key,
+            json.dumps(payload, indent=2, default=str).encode("utf-8"),
+            "application/json",
+        )
+        return key
+
+    def save_markdown(self, key: str, markdown: str) -> str | None:
+        if not self.enabled:
+            return None
+        self._put_object(key, markdown.encode("utf-8"), "text/markdown; charset=utf-8")
+        return key
+
+    def _put_object(self, key: str, body: bytes, content_type: str) -> None:
         import boto3
 
-        today = datetime.now(timezone.utc)
-        key = f"run-summaries/{today:%Y/%m/%d}/{run_id}.json"
         client = boto3.client(
             "s3",
             region_name=self.region,
@@ -35,7 +53,17 @@ class SpacesClient:
         client.put_object(
             Bucket=self.bucket,
             Key=key,
-            Body=json.dumps(summary, indent=2, default=str).encode("utf-8"),
-            ContentType="application/json",
+            Body=body,
+            ContentType=content_type,
         )
-        return key
+
+
+def dated_artifact_key(prefix: str, run_id: str, name: str, extension: str) -> str:
+    return _dated_key(prefix, run_id, name, extension)
+
+
+def _dated_key(prefix: str, run_id: str, name: str, extension: str) -> str:
+    today = datetime.now(timezone.utc)
+    safe_name = "".join(char if char.isalnum() or char in "-_" else "-" for char in name.lower())
+    safe_name = "-".join(part for part in safe_name.split("-") if part)
+    return f"{prefix}/{today:%Y/%m/%d}/{run_id}/{safe_name}.{extension}"

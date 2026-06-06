@@ -12,6 +12,7 @@ const intakeSchema = z.object({
     .enum(["New to the topic", "Working knowledge", "Advanced builder", "Expert", "Mixed audience", ""])
     .optional(),
   deadline: z.string().optional(),
+  researchBudgetMinutes: z.number().int().min(1).max(60).optional(),
   outputType: z.string().optional(),
 });
 

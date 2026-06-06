@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="AI Research Agent icon">
+  <rect width="512" height="512" rx="88" fill="#f4f7f2"/>
+  <path d="M86 394 394 86" stroke="#d8e0d4" stroke-width="34" stroke-linecap="round"/>
+  <rect x="112" y="112" width="288" height="288" rx="48" fill="#fffefc" stroke="#087f73" stroke-width="20"/>
+  <circle cx="192" cy="206" r="38" fill="#087f73"/>
+  <path d="M252 206h92M166 286h178M166 334h128" stroke="#18221f" stroke-width="28" stroke-linecap="round"/>
+  <path d="m332 118 42 42M118 332l42 42" stroke="#6358c9" stroke-width="24" stroke-linecap="round"/>
+  <path d="M112 112h96v28h-68v68h-28z" fill="#b78318"/>
+</svg>

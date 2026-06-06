@@ -1,4 +1,4 @@
-import type { ResearchIntake, RunRecord } from "@ai-research-agent/shared";
+import type { ResearchIntake, RunRecord, UpdatesOverview } from "@ai-research-agent/shared";
 
 const backendUrl = process.env.AGENT_BACKEND_URL ?? "http://127.0.0.1:8080";
 const backendToken = process.env.AGENT_BACKEND_TOKEN;
@@ -56,4 +56,22 @@ export async function saveFeedback(runId: string, payload: { rating?: string; co
     cache: "no-store",
   });
   return parseResponse<{ runId: string; status: string; message: string }>(response);
+}
+
+export async function listUpdates(): Promise<UpdatesOverview> {
+  const response = await fetch(`${backendUrl}/updates`, {
+    headers: headers(),
+    cache: "no-store",
+  });
+  return parseResponse<UpdatesOverview>(response);
+}
+
+export async function runUpdateAction(updateId: string, action: "approve" | "decline", passcode?: string) {
+  const response = await fetch(`${backendUrl}/updates/${updateId}/${action}`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ passcode }),
+    cache: "no-store",
+  });
+  return parseResponse<{ status: string; message: string }>(response);
 }

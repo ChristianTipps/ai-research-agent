@@ -3,7 +3,13 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "AI Research Agent",
-  description: "Research intake, job status, and final reports for a hosted AI agent.",
+  description: "Learning-centered AI research workspace with Notion and DigitalOcean memory.",
+  applicationName: "AI Research Agent",
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: "/icon.svg",
+    apple: "/icon.svg",
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

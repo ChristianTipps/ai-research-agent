@@ -8,8 +8,17 @@ from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import Settings, get_settings
-from .schemas import ActionResponse, FeedbackCreate, ResearchRunCreate, RunRecord, RunStatus
+from .schemas import (
+    ActionResponse,
+    FeedbackCreate,
+    ResearchRunCreate,
+    RunRecord,
+    RunStatus,
+    UpdateActionCreate,
+    UpdatesOverview,
+)
 from .storage import RunRepository, create_repository
+from .updates import approved_update_to_workflow_notes, proposed_update_from_feedback
 from .worker import process_research_run
 
 settings = get_settings()
@@ -35,6 +44,13 @@ def authorize(
     bearer = authorization.removeprefix("Bearer ").strip() if authorization else None
     if bearer != expected and x_agent_backend_token != expected:
         raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+def authorize_update(passcode: str | None) -> None:
+    if not settings.admin_update_passcode:
+        return
+    if passcode != settings.admin_update_passcode:
+        raise HTTPException(status_code=401, detail="Invalid admin update passcode")
 
 
 @app.get("/health")
@@ -117,8 +133,68 @@ async def save_feedback(
     if run is None:
         raise HTTPException(status_code=404, detail="Run not found")
     repository.save_feedback(run_id, feedback)
-    repository.append_event(run_id, "feedback_saved", "Feedback saved.")
-    return ActionResponse(runId=run_id, status=run.status, message="Feedback saved.")
+    title, category, body = proposed_update_from_feedback(run, feedback)
+    proposed_update = repository.create_proposed_update(
+        title=title,
+        category=category,
+        body=body,
+        evidence_run_ids=[run_id],
+    )
+    run.progress.proposed_update_count += 1
+    repository.update_run(run_id, progress=run.progress)
+    repository.append_event(
+        run_id,
+        "feedback_saved",
+        "Feedback saved and converted into a pending proposed update.",
+        {"proposed_update_id": proposed_update.id, "category": proposed_update.category},
+    )
+    return ActionResponse(
+        runId=run_id,
+        status=run.status,
+        message="Feedback saved and queued as a proposed update.",
+    )
+
+
+@app.get("/updates", response_model=UpdatesOverview, response_model_by_alias=True)
+async def list_updates(_: None = Depends(authorize)) -> UpdatesOverview:
+    return UpdatesOverview(
+        proposedUpdates=repository.list_proposed_updates(),
+        workflowVersions=repository.list_workflow_versions(),
+    )
+
+
+@app.post("/updates/{update_id}/approve", response_model=ActionResponse, response_model_by_alias=True)
+async def approve_update(
+    update_id: str,
+    payload: UpdateActionCreate,
+    _: None = Depends(authorize),
+) -> ActionResponse:
+    authorize_update(payload.passcode)
+    update = repository.set_proposed_update_status(update_id, "approved")
+    notes, source_policy = approved_update_to_workflow_notes(
+        update.title,
+        update.category,
+        update.body,
+    )
+    if update.category in {"instructions", "source_policy", "workflow", "user_preference", "evaluation"}:
+        repository.create_workflow_version(
+            version=f"research-workflow-{update.id}",
+            notes=notes,
+            instruction_summary=update.body[:900],
+            source_policy=source_policy,
+        )
+    return ActionResponse(status=update.status, message="Update approved and versioned.")
+
+
+@app.post("/updates/{update_id}/decline", response_model=ActionResponse, response_model_by_alias=True)
+async def decline_update(
+    update_id: str,
+    payload: UpdateActionCreate,
+    _: None = Depends(authorize),
+) -> ActionResponse:
+    authorize_update(payload.passcode)
+    update = repository.set_proposed_update_status(update_id, "declined")
+    return ActionResponse(status=update.status, message="Update declined.")
 
 
 def main() -> None:

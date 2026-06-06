@@ -30,6 +30,7 @@ class Settings(BaseModel):
     local_sqlite_path: str
 
     agent_backend_token: str | None
+    admin_update_passcode: str | None
 
     notion_api_key: str | None
     notion_prompts_database_id: str | None
@@ -52,6 +53,7 @@ def get_settings() -> Settings:
         database_url=os.getenv("DATABASE_URL"),
         local_sqlite_path=os.getenv("LOCAL_SQLITE_PATH", "./data/local.db"),
         agent_backend_token=os.getenv("AGENT_BACKEND_TOKEN"),
+        admin_update_passcode=os.getenv("ADMIN_UPDATE_PASSCODE"),
         notion_api_key=os.getenv("NOTION_API_KEY"),
         notion_prompts_database_id=os.getenv("NOTION_PROMPTS_DATABASE_ID"),
         notion_responses_database_id=os.getenv("NOTION_RESPONSES_DATABASE_ID"),
